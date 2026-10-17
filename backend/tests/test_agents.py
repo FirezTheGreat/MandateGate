@@ -184,6 +184,36 @@ def test_openai_compatible_round_trip() -> None:
     assert [m["role"] for m in seen[1]["messages"]] == ["system", "user", "assistant", "tool", "tool"]
 
 
+def test_openai_compatible_retries_transient_failures() -> None:
+    attempts: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise httpx.ReadTimeout("slow", request=request)
+        if len(attempts) == 2:
+            return httpx.Response(503, json={"error": "overloaded"})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}]})
+
+    http = httpx.Client(base_url="http://llm.test/v1", transport=httpx.MockTransport(handler))
+    convo = OpenAICompatConversation(system="s", user="u", tools=TOOLS, model="m", base_url="", api_key="", http=http, backoff_s=0)
+    assert convo.send().text == "ok" and len(attempts) == 3
+
+
+def test_openai_compatible_gives_up_and_does_not_retry_client_errors() -> None:
+    attempts: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(400, json={"error": "bad schema"})
+
+    http = httpx.Client(base_url="http://llm.test/v1", transport=httpx.MockTransport(handler))
+    convo = OpenAICompatConversation(system="s", user="u", tools=TOOLS, model="m", base_url="", api_key="", http=http, backoff_s=0)
+    with pytest.raises(LLMError, match="400"):
+        convo.send()
+    assert len(attempts) == 1
+
+
 def test_provider_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_MODEL", raising=False)
