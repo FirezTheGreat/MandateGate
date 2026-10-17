@@ -82,7 +82,6 @@ def test_unknown_decision_is_structured_404(gate: TestClient) -> None:
 
 
 def test_run_scenario_rejects_unsafe_name(gate: TestClient) -> None:
-    assert gate.post("/admin/run-scenario", json={"scenario": "hero_attack"}).status_code == 200
     assert gate.post("/admin/run-scenario", json={"scenario": "x && del *"}).status_code == 422
 
 

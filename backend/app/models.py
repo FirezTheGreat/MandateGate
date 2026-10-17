@@ -403,6 +403,7 @@ class RunScenarioStarted(Contract):
     scenario: str
     mode: GateMode
     agent: AgentMode
+    agent_label: str  # "AI agent (gemini-3.8-flash)" or "Simulated fooled agent (scripted)": always shown
 
 
 # --------------------------------------------------------------------------- attack suite results

@@ -336,6 +336,7 @@ export interface RunScenarioStarted {
   scenario: string;
   mode: GateMode;
   agent: AgentMode;
+  agent_label: string; // "AI agent (gemini-3.8-flash)" or "Simulated fooled agent (scripted)": always shown
 }
 
 // --- attack suite results (GET /attacks/results)

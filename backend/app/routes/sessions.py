@@ -1,4 +1,5 @@
-"""POST /sessions: start one agent run, bound to one mandate (and optionally a demo scenario)."""
+"""POST /sessions: start one agent run, bound to one mandate (and optionally a demo scenario).
+GET /sessions/{id}: look one up (the dashboard follows a run by its session)."""
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -27,4 +28,12 @@ def create_session(req: SessionCreateRequest, settings: SettingsDep, fixtures: F
         return api_error(404, "unknown_scenario", f"no scenario {req.scenario}")
     session = Session(session_id=new_id("ses"), mandate_id=mandate.mandate_id, scenario=req.scenario, mode=mode, created_at=to_iso(now))
     db.insert_session(conn, **session.model_dump())
+    return session
+
+
+@router.get("/sessions/{session_id}", response_model=Session)
+def get_session(session_id: str, conn: ConnDep) -> Session | JSONResponse:
+    session = db.get_session(conn, session_id)
+    if session is None:
+        return api_error(404, "not_found", f"no session {session_id}")
     return session

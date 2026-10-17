@@ -9,7 +9,7 @@ from app.delegation import CaveatError, attenuate, detect_escalation, mint_root,
 from app.deps import ConnDep, SettingsDep
 from app.errors import api_error
 from app.mandate import create_mandate
-from app.models import DelegateRequest, DelegationToken, MandateCreated, MandateCreateRequest
+from app.models import DelegateRequest, DelegationToken, Mandate, MandateCreated, MandateCreateRequest
 
 router = APIRouter(tags=["mandates"])
 
@@ -23,6 +23,15 @@ def post_mandate(req: MandateCreateRequest, settings: SettingsDep, conn: ConnDep
         db.insert_mandate(conn, mandate)
         db.insert_token(conn, token, to_iso(now))
     return MandateCreated(mandate=mandate, token=token)
+
+
+@router.get("/mandates/{mandate_id}", response_model=Mandate)
+def get_mandate(mandate_id: str, conn: ConnDep) -> Mandate | JSONResponse:
+    """For the dashboard's MandateBar. The signed mandate is not secret; the root token is never returned here."""
+    mandate = db.get_mandate(conn, mandate_id)
+    if mandate is None:
+        return api_error(404, "not_found", f"no mandate {mandate_id}")
+    return mandate
 
 
 @router.post("/delegate", response_model=DelegationToken)

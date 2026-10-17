@@ -13,6 +13,7 @@ from app.clock import to_iso, utc_now
 from app.config import load_settings
 from app.errors import install_error_handlers
 from app.fixtures import load_fixtures
+from app.runner import Runner
 from app.routes import admin, approvals, attacks, decisions, internal, mandates, proposals, sessions, tools, trace
 from app.routes import events as events_routes
 
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.fixtures = load_fixtures()  # raises FixtureError on bad demo data: refuse to start
     app.state.mode = settings.gate_mode
+    app.state.runner = Runner()  # dashboard Run buttons → agents.run_scenario subprocess
     yield
 
 

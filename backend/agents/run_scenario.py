@@ -69,6 +69,7 @@ def run(
     mandate, root_token = created["mandate"], created["token"]
     session = client.create_session(mandate["mandate_id"], scenario)
     result["session_id"] = session["session_id"]
+    log(f"[session] {session['session_id']}")  # the gate's dashboard runner waits for this line
     log(f"[human] {PRINCIPAL} approved: {sc['instruction']}  (mandate {mandate['mandate_id']}, mode {mode})")
 
     try:

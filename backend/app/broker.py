@@ -225,6 +225,7 @@ def execute(
             if is_critical(o) and (o.normalized, o.source_ref) not in shown:
                 shown.add((o.normalized, o.source_ref))
                 events.emit(conn, "value_recorded", session.session_id, {
-                    "value_id": r.value_id, "raw": r.raw, "field_hint": r.field_hint, "source_ref": r.source_ref, "trust": r.trust,
+                    "value_id": r.value_id, "raw": r.raw, "field_hint": r.field_hint, "source_ref": r.source_ref,
+                    "trust": r.trust, "tool_call_id": tool_call_id,
                 }, ts)
     return ToolCallResult(tool_call_id=tool_call_id, session_id=session.session_id, tool=spec.name, result=result, values_recorded=len(records))
