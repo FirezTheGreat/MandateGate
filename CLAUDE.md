@@ -351,7 +351,7 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | GET | `/decisions`, `/decisions/{id}` | History |
 | GET | `/trace/{decision_id}` | Trace graph `{nodes, edges, fields}` for React Flow. Columns source → tool_call → proposal → decision (x = col×280); status good/bad/warn/neutral; `fields` lists where `payee_account` and `amount_paise` appeared and whether each traces to its required trusted source |
 | GET | `/sessions/{id}/events` | Ordered event log (data shapes documented in `app/events.py`) |
-| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment`. `?session_id=` filters, `?after=<seq>` replays (0 = all), `Last-Event-ID` resumes; default is live-only. Message: `event: <type>`, `id: <seq>`, `data: <Event JSON>` |
+| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment`, `run_finished` (a dashboard run's process exited: `{exit_code, ok, detail}`). `?session_id=` filters, `?after=<seq>` replays (0 = all), `Last-Event-ID` resumes; default is live-only. Message: `event: <type>`, `id: <seq>`, `data: <Event JSON>` |
 | GET, POST | `/admin/mode` | Read / set `{mode: "gated" \| "baseline"}` |
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
 | POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent, agent_label}`; `app/runner.py` spawns `agents.run_scenario --on-step-up wait` in the current mode and returns once the run prints `[session] <id>`. One run at a time (409 `run_in_progress`); unknown scenario 404; run log in `backend/data/runs/<session>.log` |
@@ -599,6 +599,14 @@ What works (Phase 2):
   email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
 
 No stubs remain (`stub_data.py` deleted in Phase 6).
+
+What works (Phase 7, fresh-clone test):
+- Clone from GitHub into an empty folder → `make setup` (deps + 3 fresh keys) → `make test` (412) → `make attacks` →
+  `make dev` → every scripted scenario via `make scenario` (happy, hero baseline/gated, step-up approve) all as expected.
+- Found and fixed: (1) README never said how to configure the AI agent → "Use a real AI agent" section (Gemini /
+  Claude / OpenAI-compatible). (2) With no key (or the API down) the dashboard spun "AI agent is working" forever →
+  the runner reports the process exit (`Runner(on_finish=report_to(db))`) as a `run_finished` event; the Verdict panel
+  shows "could not finish" + the run's error line, the feed and a toast say so. Contract: `EventType` += `run_finished`.
 
 What works (Phase 7, red-team pass):
 - `tests/test_redteam.py` (27 tests, written failing first). Probed every §2 invariant: no path found for an agent to set

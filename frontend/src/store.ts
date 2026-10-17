@@ -42,6 +42,12 @@ export function useRunEvents(): GateEvent[] {
   return run ? events.filter((e) => e.session_id === run.session_id) : [];
 }
 
+/** How the watched run's process ended, once it has (null while it is still running). */
+export function runFinished(events: GateEvent[]): { ok: boolean; detail: string | null } | null {
+  const e = [...events].reverse().find((x) => x.type === "run_finished");
+  return e ?{ ok: Boolean(e.data.ok), detail: (e.data.detail as string | null) ?? null } : null;
+}
+
 /** The latest decision of the watched run (the approval flow re-emits a decision for the same id). */
 export function latestDecision(events: GateEvent[]): { decisionId: string; outcome: string; approval?: string } | null {
   for (let i = events.length - 1; i >= 0; i--) {

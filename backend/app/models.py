@@ -37,6 +37,7 @@ EventType = Literal[
     "escalation_attempt",
     "suspicious_input",
     "payment",
+    "run_finished",
 ]
 CheckStatus = Literal["pass", "fail", "skipped"]  # "skipped": not run (baseline mode skips checks 4–5)
 AgentMode = Literal["llm", "scripted"]

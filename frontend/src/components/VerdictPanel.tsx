@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Loader2, MinusCircle, Ticket, XCircle } fr
 import { AnimatePresence, motion } from "motion/react";
 import { api } from "../api";
 import { cn, inr } from "../lib/utils";
-import { latestDecision, useLive, useRunEvents } from "../store";
+import { latestDecision, runFinished, useLive, useRunEvents } from "../store";
 import type { CheckName, CheckResult, CheckStatus, Decision, TraceGraph } from "../types";
 import { Button } from "./ui/button";
 import { Card, CardHeader } from "./ui/card";
@@ -81,7 +81,9 @@ export function VerdictPanel({ onReview }: { onReview: () => void }) {
   const d = decision.data ?? null;
   const payeeField = trace.data?.fields.find((f) => f.field === "payee_account");
   const attackerPaid = d?.outcome === "ALLOW" && payeeField?.status === "bad";
-  const working = run && !latest;
+  const finished = runFinished(events);
+  const working = run && !latest && !finished;
+  const stopped = run && !latest && finished;
   const toolCalls = events.filter((e) => e.type === "tool_call").length;
   const failed = d?.checks.find((c) => c.status === "fail" && c.required);
   const note = d ? callout(d, trace.data, run?.scenario, run?.agent === "llm") : null;
@@ -94,6 +96,15 @@ export function VerdictPanel({ onReview }: { onReview: () => void }) {
         <p className="mb-2 flex items-center justify-center gap-2 text-sm text-muted">
           <Loader2 className="size-4 animate-spin" aria-hidden /> {run.agent_label} is working · {toolCalls} tool call{toolCalls === 1 ? "" : "s"}
         </p>
+      )}
+      {stopped && (
+        <div role="status" className="mb-2 rounded-lg bg-warn/10 px-3 py-2.5 text-sm">
+          <div className="font-semibold text-warn">
+            {finished.ok ? `${run.agent_label} finished without proposing a payment` : `${run.agent_label} could not finish`}
+          </div>
+          {finished.detail && <div className="mt-0.5 text-muted">{finished.detail}</div>}
+          <div className="mt-0.5 text-muted">Nothing was paid. No payment was proposed, so MandateGate had nothing to decide.</div>
+        </div>
       )}
       <ol className="space-y-1">
         {(d?.checks ?? []).map((c, i) => (

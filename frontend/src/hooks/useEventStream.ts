@@ -36,6 +36,11 @@ export function useEventStream(): void {
       if (e.type === "suspicious_input") {
         toast.warning("Suspicious input rejected", { description: `Fields: ${(d.fields as string[]).join(", ")}` });
       }
+      if (e.type === "run_finished" && mine && !useLive.getState().events.some((x) => x.session_id === watched && x.type === "decision")) {
+        const why = (d.detail as string | null) ?? "it ended without proposing a payment";
+        if (d.ok) toast.info("The agent finished without proposing a payment", { description: why });
+        else toast.error("The agent run failed", { description: why });
+      }
       if (e.type === "escalation_attempt" && mine) {
         toast.warning("Escalation attempt logged", { description: (d.caveats as string[]).join("; ") });
       }

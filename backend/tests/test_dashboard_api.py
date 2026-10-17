@@ -41,6 +41,36 @@ def test_runner_reports_a_run_that_dies_before_starting(tmp_path: Path) -> None:
     assert e.value.error == "run_failed" and "gate unreachable" in e.value.detail
 
 
+def _finished(script: str, tmp_path: Path) -> list[tuple[str, int, str | None]]:
+    reports: list[tuple[str, int, str | None]] = []
+    runner = Runner(command=fake_command(script), log_dir=tmp_path, on_finish=lambda *a: reports.append(a))
+    runner.start("happy", "gated", "llm")
+    runner.process.wait(timeout=10)  # type: ignore[union-attr]
+    for _ in range(50):  # the pump reports after the process exits
+        if reports:
+            break
+        time.sleep(0.05)
+    return reports
+
+
+def test_runner_reports_how_a_run_ended(tmp_path: Path) -> None:
+    """Without this the dashboard spins forever when the AI cannot run (no key, API down): Phase 7 fresh-clone finding."""
+    script = "print('[session] ses_x', flush=True); print('paid       nothing'); print('error      agent could not run: no credentials'); raise SystemExit(1)"
+    assert _finished(script, tmp_path) == [("ses_x", 1, "agent could not run: no credentials")]
+    assert _finished("print('[session] ses_y', flush=True); print('expected   ALLOW: yes')", tmp_path) == [("ses_y", 0, None)]
+
+
+def test_run_finished_reaches_the_event_feed(gate: TestClient) -> None:
+    from app.runner import report_to
+
+    kit = GateKit(gate)
+    m, _ = kit.mandate()
+    sid = kit.session(m["mandate_id"], "happy")
+    report_to(gate_app.state.settings.gate_db_path)(sid, 1, "agent could not run: no credentials")
+    finished = [e for e in kit.events(sid) if e["type"] == "run_finished"]
+    assert [e["data"] for e in finished] == [{"exit_code": 1, "ok": False, "detail": "agent could not run: no credentials"}]
+
+
 def test_runner_times_out_when_no_session_appears(tmp_path: Path) -> None:
     runner = Runner(command=fake_command("import time; time.sleep(5)"), start_timeout_s=0.5, log_dir=tmp_path)
     with pytest.raises(RunnerError) as e:

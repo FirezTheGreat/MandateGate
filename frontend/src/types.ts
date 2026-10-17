@@ -21,7 +21,8 @@ export type EventType =
   | "decision"
   | "escalation_attempt"
   | "suspicious_input"
-  | "payment";
+  | "payment"
+  | "run_finished"; // a dashboard run's process exited: {exit_code, ok, detail}
 /** "skipped": the check did not run (baseline mode skips payee/amount provenance). */
 export type CheckStatus = "pass" | "fail" | "skipped";
 export type AgentMode = "llm" | "scripted";

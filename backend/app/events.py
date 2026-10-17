@@ -1,4 +1,5 @@
-"""Gate events: every tool call, critical value, proposal, decision, payment and suspicious input.
+"""Gate events: every tool call, critical value, proposal, decision, payment, suspicious input, and
+the end of each dashboard run.
 
 Every event is committed to the events table; GET /sessions/{id}/events reads it, and
 GET /events/stream (SSE) streams it live (routes/events.py).
@@ -12,6 +13,8 @@ GET /events/stream (SSE) streams it live (routes/events.py).
     suspicious_input    {path, fields: [rejected field names]}
     payment             PaymentEventReport: {status: paid|refused, receipt?, error?, detail?, pass_id?,
                         decision_id?, payee_account?, amount_paise?, sent_at} (signed by the payment service)
+    run_finished        {exit_code, ok, detail: the run's error line or null} (the runner, when a dashboard run's
+                        process exits; display only)
 """
 
 import sqlite3

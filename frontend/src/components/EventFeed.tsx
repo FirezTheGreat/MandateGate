@@ -21,6 +21,8 @@ function describe(e: GateEvent): { kind: string; tone: Tone; title: string; text
       return { kind: "Suspicious", tone: "warn", title: (d.fields as string[]).join(", "), text: `rejected at ${String(d.path)}` };
     case "escalation_attempt":
       return { kind: "Escalation", tone: "warn", title: "Wider permission refused", text: (d.caveats as string[]).join("; ") };
+    case "run_finished":
+      return { kind: "Run ended", tone: d.ok ? "neutral" : "bad", title: d.ok ? "Agent finished" : "Agent run failed", text: String(d.detail ?? "") };
   }
 }
 

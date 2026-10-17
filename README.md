@@ -92,6 +92,18 @@ Open **http://localhost:5173**. Interactive API docs are at http://localhost:800
 
 > `make setup` creates `.env` from `.env.example` and replaces placeholder keys with random 32-byte secrets. Both services refuse to start with missing or placeholder keys. Never commit `.env`.
 
+### Use a real AI agent (optional)
+
+The scam demo (simulated agent), the protocol attacks and `make attacks` need no AI. The **Real AI agent** buttons, `AGENT=llm` and `make attacks LLM=1` do. Add one of these to `.env`, then restart `make dev`:
+
+| Provider | `.env` |
+|---|---|
+| Google Gemini (what we demo with) | `LLM_PROVIDER=openai`<br>`OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`<br>`LLM_MODEL=gemini-3.8-flash`<br>`OPENAI_API_KEY=<your Gemini API key>` |
+| Anthropic Claude | `LLM_PROVIDER=anthropic`<br>`ANTHROPIC_API_KEY=<your key>` (model defaults to `claude-opus-5-5`) |
+| Any OpenAI-compatible endpoint | `LLM_PROVIDER=openai`, `OPENAI_BASE_URL`, `LLM_MODEL`, `OPENAI_API_KEY` |
+
+Gemini's free tier allows about 20 requests a day per model (one run uses 3 to 4), so enable billing for rehearsals. Without a key, the AI run stops before doing anything and the dashboard says why. Nothing is paid.
+
 ### Commands
 
 | Command | What it does |

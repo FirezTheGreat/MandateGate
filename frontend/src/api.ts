@@ -48,7 +48,7 @@ export const api = {
 };
 
 const EVENT_TYPES: EventType[] = [
-  "tool_call", "value_recorded", "proposal", "decision", "escalation_attempt", "suspicious_input", "payment",
+  "tool_call", "value_recorded", "proposal", "decision", "escalation_attempt", "suspicious_input", "payment", "run_finished",
 ];
 
 export type StreamStatus = "connecting" | "live" | "down";
