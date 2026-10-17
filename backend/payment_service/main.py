@@ -4,25 +4,30 @@ A separate trust boundary from the gate. It never pays without a valid one-time 
 and it has no bypass or debug flag (CLAUDE.md §2 invariant 4).
 """
 
-from collections.abc import AsyncIterator
+import sqlite3
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import load_settings
-from app.db import init_payment_db
+from app import db
+from app.clock import utc_now
+from app.config import Settings, load_settings
 from app.errors import api_error, install_error_handlers
 from app.models import OkResponse, PayRequest, Receipt
-from app.stub_data import LEDGER
+from payment_service.verify import PayError, verify_and_pay
 
 DASHBOARD_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_payment_db(load_settings().pay_db_path)
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = load_settings()  # raises ConfigError on missing/placeholder keys: refuse to start
+    db.init_payment_db(settings.pay_db_path)
+    app.state.settings = settings
     yield
 
 
@@ -36,20 +41,36 @@ app.add_middleware(
 install_error_handlers(app)
 
 
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings
+
+
+def get_conn(settings: Annotated[Settings, Depends(get_settings)]) -> Iterator[sqlite3.Connection]:
+    conn = db.connect(settings.pay_db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+ConnDep = Annotated[sqlite3.Connection, Depends(get_conn)]
+
+
 @app.post("/pay", response_model=Receipt)
-def pay(req: PayRequest) -> JSONResponse:
-    # STUB (Phase 0): refuses everything. Phase 1 replaces this with verify.py:
-    # sig → exp → exact field match → atomic nonce burn → ledger → receipt.
-    if req.one_pass is None:
-        return api_error(401, "missing_pass", "a one-time pass is required")
-    return api_error(503, "not_implemented", "pass verification lands in Phase 1; refusing to pay")
+def pay(req: PayRequest, settings: SettingsDep, conn: ConnDep) -> Receipt | JSONResponse:
+    try:
+        return verify_and_pay(conn, req, key=settings.pass_key, now=utc_now())
+    except PayError as e:
+        return api_error(e.status, e.error, e.detail)
 
 
 @app.get("/ledger", response_model=list[Receipt])
-def ledger() -> list[Receipt]:
-    return LEDGER  # STUB: example rows until Phase 1 reads the real ledger table
+def ledger(conn: ConnDep) -> list[Receipt]:
+    return db.list_ledger(conn)
 
 
 @app.post("/reset", response_model=OkResponse)
-def reset() -> OkResponse:
-    return OkResponse(ok=True, detail="stub: nothing to reset yet")
+def reset(conn: ConnDep) -> OkResponse:
+    db.clear_ledger(conn)
+    return OkResponse(ok=True, detail="ledger cleared (used nonces are kept, so old passes stay dead)")

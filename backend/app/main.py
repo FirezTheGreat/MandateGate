@@ -15,8 +15,10 @@ DASHBOARD_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_gate_db(load_settings().gate_db_path)
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = load_settings()  # raises ConfigError on missing/placeholder keys: refuse to start
+    init_gate_db(settings.gate_db_path)
+    app.state.settings = settings
     yield
 
 

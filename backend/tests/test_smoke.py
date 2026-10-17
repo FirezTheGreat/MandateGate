@@ -1,7 +1,6 @@
 """Phase 0 smoke tests: both apps boot, stub routes honour the contracts in models.py."""
 
 import re
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -9,12 +8,11 @@ from fastapi.testclient import TestClient
 
 from app.config import ConfigError, load_settings
 from app.db import GATE_TABLES, PAYMENT_TABLES, table_names
-from app.main import app as gate_app
 from app.models import CHECK_ORDER, AttackResults, Decision, TraceGraph
 from payment_service.main import app as pay_app
+from tests.conftest import Env
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
-TEST_KEY = "ab" * 32
 
 FINANCE_TOKEN = {
     "token_id": "tok_finance_example",
@@ -38,45 +36,37 @@ PROPOSAL = {
 
 PAYMENT = {"invoice_id": "INV-1048", "payee_account": "ACME-4410-2291", "amount_paise": 485000, "currency": "INR"}
 
-
-@pytest.fixture
-def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    gate_db, pay_db = tmp_path / "gate.db", tmp_path / "payment.db"
-    monkeypatch.setenv("GATE_DB_PATH", str(gate_db))
-    monkeypatch.setenv("PAY_DB_PATH", str(pay_db))
-    for name in ("MANDATE_KEY", "ROOT_KEY", "PASS_KEY"):
-        monkeypatch.setenv(name, TEST_KEY)
-    return gate_db, pay_db
-
-
-@pytest.fixture
-def gate(env: tuple[Path, Path]) -> Iterator[TestClient]:
-    with TestClient(gate_app) as client:
-        yield client
-
-
-@pytest.fixture
-def pay(env: tuple[Path, Path]) -> Iterator[TestClient]:
-    with TestClient(pay_app) as client:
-        yield client
+RECEIPT = {
+    "receipt_id": "rcp_smoke",
+    "pass_id": "pas_smoke",
+    "decision_id": "dec_allow_example",
+    **PAYMENT,
+    "paid_at": "2026-10-17T09:00:05Z",
+}
 
 
 # --------------------------------------------------------------------------- startup & config
 
 
-def test_schemas_created_on_startup(gate: TestClient, pay: TestClient, env: tuple[Path, Path]) -> None:
-    gate_db, pay_db = env
-    assert set(GATE_TABLES) <= table_names(gate_db)
-    assert set(PAYMENT_TABLES) <= table_names(pay_db)
+def test_schemas_created_on_startup(gate: TestClient, pay: TestClient, env: Env) -> None:
+    assert set(GATE_TABLES) <= table_names(env.gate_db)
+    assert set(PAYMENT_TABLES) <= table_names(env.pay_db)
 
 
 @pytest.mark.parametrize("bad", ["", "change-me-32-bytes-hex", "tooshort"])
-def test_placeholder_or_weak_keys_refuse_to_start(env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
+def test_placeholder_or_weak_keys_refuse_to_start(env: Env, monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
     monkeypatch.setenv("PASS_KEY", bad)
     with pytest.raises(ConfigError):
         load_settings()
     with pytest.raises(ConfigError), TestClient(pay_app):
         pass
+
+
+@pytest.mark.parametrize("bad", ["0", "-5", "601", "two minutes"])
+def test_bad_pass_ttl_refuses_to_start(env: Env, monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
+    monkeypatch.setenv("PASS_TTL_SECONDS", bad)
+    with pytest.raises(ConfigError):
+        load_settings()
 
 
 # --------------------------------------------------------------------------- decisions
@@ -187,9 +177,8 @@ def test_attack_results_shape(gate: TestClient) -> None:
     AttackResults.model_validate(gate.get("/attacks/results").json())
 
 
-def test_internal_payment_event_accepts_receipt(gate: TestClient, pay: TestClient) -> None:
-    receipt = pay.get("/ledger").json()[0]
-    assert gate.post("/internal/payment-event", json=receipt).status_code == 200
+def test_internal_payment_event_accepts_receipt(gate: TestClient) -> None:
+    assert gate.post("/internal/payment-event", json=RECEIPT).status_code == 200
 
 
 # --------------------------------------------------------------------------- payment service
@@ -206,10 +195,19 @@ def test_pay_legacy_pass_key_rejected(pay: TestClient) -> None:
     assert r.status_code == 422
 
 
-def test_ledger_ok(pay: TestClient) -> None:
+def test_ledger_starts_empty(pay: TestClient) -> None:
     r = pay.get("/ledger")
     assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    assert r.json() == []
+
+
+def test_stub_approval_pass_is_refused_by_payment_service(gate: TestClient, pay: TestClient) -> None:
+    """Stub passes carry all-zero signatures: the real payment rail must reject them."""
+    decision = gate.post("/approvals/dec_stepup_example", json={"approve": True}).json()
+    p = decision["one_pass"]
+    payment = {k: p[k] for k in ("invoice_id", "payee_account", "amount_paise", "currency")}
+    r = pay.post("/pay", json={"one_pass": p, "payment": payment})
+    assert (r.status_code, r.json()["error"]) == (401, "bad_signature")
 
 
 # --------------------------------------------------------------------------- invariants

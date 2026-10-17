@@ -126,7 +126,7 @@ Attack-suite numbers will be filled in from `make attacks` once Phase 6 lands: b
 Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tracked in [`CLAUDE.md` §15](CLAUDE.md#15-status-keep-updated).
 
 - [x] **Phase 0**: scaffold, frozen data contracts, fixtures, stubbed API
-- [ ] Phase 1: crypto, mandates, delegation tokens, passes, payment service
+- [x] **Phase 1**: crypto, mandates, delegation tokens, one-time passes, real payment service
 - [ ] Phase 2: broker, provenance, policy engine
 - [ ] Phase 3: agents (scripted + LLM), end-to-end scenarios
 - [ ] Phase 4: approvals, attack tracer, live events (SSE)
@@ -134,7 +134,7 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [ ] Phase 6: attack suite and metrics
 - [ ] Phase 7: hardening and demo assets
 
-Right now every API route returns realistic stub data so the dashboard can be built in parallel. The stub payment endpoint refuses every request; it never pays without a verified pass, even as a placeholder.
+The trust primitives are real and tested: signed mandates, delegation tokens that can only narrow, and one-time passes. The payment service verifies each pass, burns it, and only then pays. A pass that has been tampered with, replayed, expired, or used for the wrong account is rejected. Routes that depend on later phases (proposals, tools, trace, events) still return realistic stub data, so the dashboard can be built in parallel.
 
 ## Repository layout
 

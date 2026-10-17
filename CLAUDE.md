@@ -462,8 +462,8 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 
 ## 15. Status (keep updated)
 
-- [x] Phase 0 — scaffold + contracts (`make setup && make dev` boots all three; `make test` green, 24 smoke tests)
-- [ ] Phase 1 — crypto, mandate, delegation, passes, payment service
+- [x] Phase 0 — scaffold + contracts (`make setup && make dev` boots all three)
+- [x] Phase 1 — crypto, mandate, delegation, passes, payment service (`make test` green: 175 tests)
 - [ ] Phase 2 — broker, provenance, policy, decisions
 - [ ] Phase 3 — agents (scripted + LLM), scenarios end-to-end
 - [ ] Phase 4 — approvals, tracer, SSE
@@ -482,17 +482,39 @@ What works (Phase 0):
 - Frontend: Vite 8 + React 19 + TS 7 strict + Tailwind 4 + @xyflow/react; Live page renders `GET /decisions/dec_example`.
 - Errors from both services are `{error, detail}`; validation errors never echo input values.
 
-Stubs (all example data lives in `backend/app/stub_data.py`; delete pieces as real code lands):
-- Every gate route in §7 returns hard-coded data. `POST /proposals` always returns the BLOCK example (fails closed).
-  `POST /tools/{name}` serves fixture data with no token check and no provenance recording. Fake sigs are all zeros.
-- Payment service `POST /pay` refuses everything: 401 `missing_pass` without a pass, 503 `not_implemented` otherwise.
-  `GET /ledger` returns one example row. `/reset` endpoints are no-ops.
+What works (Phase 1):
+- `crypto.py`: `canonical_json` (refuses floats anywhere in signed data), `sign`/`verify` (HMAC-SHA-256, keys = env
+  strings as UTF-8), `constant_time_equal` (all sig compares), `new_nonce` (32 hex), `new_id`. `clock.py`: `utc_now`,
+  `to_iso`/`parse_iso` (UTC "…Z"; naive timestamps rejected). `verdict.py`: `Verdict(ok, detail)`.
+- `mandate.py`: `create_mandate`, `verify_mandate` (signature first, then expiry; unparseable expiry → invalid).
+- `delegation.py`: `root_caveats`, `mint_root`, `attenuate` (no key needed), `verify_chain`, strict `parse_caveat`
+  (exact spacing, ASCII, ≤256 chars; chain ≤64 caveats), `evaluate` (non-amount caveats; `invoice_id` caveat does not
+  restrict actions with no invoice), `amount_limit` (min bound), `detect_escalation` (looser amount OR widened
+  agent/tool/invoice set).
+- `passes.py`: `issue_pass` refuses non-ALLOW decisions, missing mandate, ttl outside 1..600s. `pass_payload` shared
+  with the payment service.
+- Payment service is real: `verify.verify_and_pay` = sig → expiry → exact field match (no normalisation) → nonce burn +
+  ledger insert in ONE `BEGIN IMMEDIATE` transaction (PK conflict → 409). A field mismatch does not burn the pass.
+  `/reset` clears the ledger but never `used_nonces`, so reset can't re-arm a pass. Proven: 16 concurrent replays → 1 paid.
+- `POST /mandates` signs + stores mandate and root token; `POST /delegate` verifies the incoming chain (401
+  `invalid_token`), attenuates (400 `invalid_caveat`), stores the child.
+- Both apps load + validate settings once at startup (`app.state.settings`); per-request SQLite connections
+  (`app/deps.py`), autocommit + explicit `db.transaction()`. `PASS_TTL_SECONDS` must be 1..600.
+
+Stubs (example data in `backend/app/stub_data.py`; delete pieces as real code lands):
+- `POST /proposals` always returns the BLOCK example (fails closed). `POST /tools/{name}` serves fixture data with no
+  token check and no provenance recording. Decisions/approvals/trace/events are hard-coded; their fake passes have
+  all-zero sigs and the real payment service rejects them (test proves it).
+- `/delegate` does not yet emit `escalation_attempt` events (Phase 4: call `detect_escalation` and publish).
 - `/admin/run-scenario` spawns nothing yet; `/attacks/results` returns example numbers; `/internal/payment-event`
-  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check).
-- Placeholder modules (docstring only): crypto, mandate, delegation, broker, provenance, policy, passes, approvals,
-  tracer, events, payment_service/verify, all agents, attacks/run_suite, scripts/seed.
-  `make scenario` / `make attacks` print "not implemented" and exit 1.
+  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check). Gate `/admin/reset` is a no-op.
+- Placeholder modules (docstring only): broker, provenance, policy, approvals, tracer, events, all agents,
+  attacks/run_suite, scripts/seed. `make scenario` / `make attacks` print "not implemented" and exit 1.
 
 Known issues:
 - Windows: `make` runs recipes via cmd.exe, so keep Makefile recipes to `cd x && cmd` (no cp/rm/export).
 - None open on contracts.
+- Admin endpoints (`/reset` on both services, `/admin/*`) are unauthenticated; services bind to 127.0.0.1 only. Fine
+  for the demo, listed as a limitation.
+- Token `token_id` / `parent_token_id` are not covered by the HMAC chain (only mandate_id + caveats are). They are
+  informational; never authorise based on them.

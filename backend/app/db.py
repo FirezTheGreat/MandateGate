@@ -4,8 +4,16 @@ JSON blobs are stored as canonical JSON text. Money columns are INTEGER paise an
 schema refuses anything that is not an integer.
 """
 
+import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+from pydantic import BaseModel
+
+from app.crypto import canonical_json
+from app.models import DelegationToken, Mandate, Receipt
 
 GATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS mandates (
@@ -136,23 +144,104 @@ PAYMENT_TABLES = ("used_nonces", "ledger")
 
 
 def connect(path: Path) -> sqlite3.Connection:
+    """One connection per request/thread. Autocommit mode: multi-statement writes use
+    `transaction()` explicitly, so atomicity is visible in the code."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(path, isolation_level=None, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 
+@contextmanager
+def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """BEGIN IMMEDIATE takes the write lock up front: all-or-nothing, one writer at a time."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield conn
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
+
+
 def init_gate_db(path: Path) -> None:
-    with connect(path) as conn:
+    conn = connect(path)
+    try:
         conn.executescript(GATE_SCHEMA)
-    conn.close()
+    finally:
+        conn.close()
 
 
 def init_payment_db(path: Path) -> None:
-    with connect(path) as conn:
+    conn = connect(path)
+    try:
         conn.executescript(PAYMENT_SCHEMA)
-    conn.close()
+    finally:
+        conn.close()
+
+
+def to_json(obj: BaseModel | list[str]) -> str:
+    if isinstance(obj, BaseModel):
+        return canonical_json(obj.model_dump(mode="json")).decode("utf-8")
+    return canonical_json(obj).decode("utf-8")
+
+
+# --------------------------------------------------------------------------- gate: mandates & tokens
+
+
+def insert_mandate(conn: sqlite3.Connection, m: Mandate) -> None:
+    conn.execute(
+        "INSERT INTO mandates (mandate_id, principal, body, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+        (m.mandate_id, m.principal, to_json(m), m.created_at, m.expires_at),
+    )
+
+
+def get_mandate(conn: sqlite3.Connection, mandate_id: str) -> Mandate | None:
+    row = conn.execute("SELECT body FROM mandates WHERE mandate_id = ?", (mandate_id,)).fetchone()
+    return Mandate.model_validate_json(row["body"]) if row else None
+
+
+def insert_token(conn: sqlite3.Connection, t: DelegationToken, created_at: str) -> None:
+    conn.execute(
+        "INSERT INTO tokens (token_id, mandate_id, parent_token_id, caveats, sig, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (t.token_id, t.mandate_id, t.parent_token_id, to_json(t.caveats), t.sig, created_at),
+    )
+
+
+def get_token(conn: sqlite3.Connection, token_id: str) -> DelegationToken | None:
+    row = conn.execute("SELECT * FROM tokens WHERE token_id = ?", (token_id,)).fetchone()
+    if row is None:
+        return None
+    return DelegationToken(
+        token_id=row["token_id"],
+        mandate_id=row["mandate_id"],
+        caveats=json.loads(row["caveats"]),
+        parent_token_id=row["parent_token_id"],
+        sig=row["sig"],
+    )
+
+
+# --------------------------------------------------------------------------- payment service: ledger
+
+
+def insert_receipt(conn: sqlite3.Connection, r: Receipt) -> None:
+    conn.execute(
+        "INSERT INTO ledger (receipt_id, pass_id, decision_id, invoice_id, payee_account, amount_paise, currency, paid_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (r.receipt_id, r.pass_id, r.decision_id, r.invoice_id, r.payee_account, r.amount_paise, r.currency, r.paid_at),
+    )
+
+
+def list_ledger(conn: sqlite3.Connection) -> list[Receipt]:
+    rows = conn.execute("SELECT * FROM ledger ORDER BY paid_at, rowid").fetchall()
+    return [Receipt.model_validate(dict(row)) for row in rows]
+
+
+def clear_ledger(conn: sqlite3.Connection) -> None:
+    """Demo reset. used_nonces is deliberately NOT cleared: a reset must never re-arm a pass."""
+    conn.execute("DELETE FROM ledger")
 
 
 def table_names(path: Path) -> set[str]:

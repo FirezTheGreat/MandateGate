@@ -46,6 +46,13 @@ def _require_key(name: str) -> str:
     return value
 
 
+def _pass_ttl() -> int:
+    raw = os.environ.get("PASS_TTL_SECONDS", "120").strip()
+    if not raw.isdigit() or not 0 < int(raw) <= 600:
+        raise ConfigError("PASS_TTL_SECONDS must be an integer in 1..600")
+    return int(raw)
+
+
 def load_settings() -> Settings:
     mode = os.environ.get("GATE_MODE", "gated")
     if mode not in ("gated", "baseline"):
@@ -54,7 +61,7 @@ def load_settings() -> Settings:
         mandate_key=_require_key("MANDATE_KEY"),
         root_key=_require_key("ROOT_KEY"),
         pass_key=_require_key("PASS_KEY"),
-        pass_ttl_seconds=int(os.environ.get("PASS_TTL_SECONDS", "120")),
+        pass_ttl_seconds=_pass_ttl(),
         gate_mode=mode,  # type: ignore[arg-type]
         gate_url=os.environ.get("GATE_URL", "http://localhost:8000"),
         pay_url=os.environ.get("PAY_URL", "http://localhost:8001"),

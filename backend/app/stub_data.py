@@ -1,7 +1,8 @@
 """PHASE 0 ONLY: hard-coded example responses so the frontend can build against the API.
 
 Every object is constructed through models.py, so this module also proves the contracts
-validate. Delete each piece as the real implementation lands (Phases 1, 2, 4).
+validate. Delete each piece as the real implementation lands (Phases 2, 4).
+Phase 1 already replaced the mandate, tokens and ledger with real implementations.
 Signatures here are all zeros: they are not real and must never verify.
 """
 
@@ -13,15 +14,11 @@ from app.models import (
     AttackResults,
     CheckResult,
     Decision,
-    DelegationToken,
     Event,
-    Mandate,
-    MandateConstraints,
     OnePass,
     PendingApproval,
     Position,
     ProposalSummary,
-    Receipt,
     ToolInfo,
     TraceEdge,
     TraceEdgeData,
@@ -32,42 +29,6 @@ from app.models import (
 
 FAKE_SIG = "0" * 64
 TS = "2026-10-17T09:00:00Z"
-
-MANDATE = Mandate(
-    mandate_id="mdt_example",
-    principal="abhishek",
-    action="pay_invoice",
-    constraints=MandateConstraints(
-        invoice_id="INV-1048",
-        vendor_id="acme",
-        max_amount_paise=500000,
-        currency="INR",
-        payee_source="vendor_registry",
-    ),
-    created_at=TS,
-    expires_at="2026-10-17T10:00:00Z",
-    signature=FAKE_SIG,
-)
-
-ROOT_TOKEN = DelegationToken(
-    token_id="tok_root_example",
-    mandate_id="mdt_example",
-    caveats=[
-        "agent in planner,finance",
-        "tool in list_inbox,read_email,get_invoice,get_vendor,propose_payment",
-        "max_amount_paise <= 500000",
-    ],
-    parent_token_id=None,
-    sig=FAKE_SIG,
-)
-
-FINANCE_TOKEN = DelegationToken(
-    token_id="tok_finance_example",
-    mandate_id="mdt_example",
-    caveats=[*ROOT_TOKEN.caveats, "agent = finance"],
-    parent_token_id="tok_root_example",
-    sig=FAKE_SIG,
-)
 
 TOOLS = [
     ToolInfo(name="list_inbox", description="List emails in the accounts-payable inbox.", args={}, source_type="email"),
@@ -272,21 +233,6 @@ PENDING_APPROVALS = [
         max_amount_paise=500000,
         requested_at=TS,
         expires_at="2026-10-17T10:00:00Z",
-    )
-]
-
-# --------------------------------------------------------------------------- ledger
-
-LEDGER = [
-    Receipt(
-        receipt_id="rcp_example",
-        pass_id="pas_example",
-        decision_id="dec_allow_example",
-        invoice_id="INV-1048",
-        payee_account="ACME-4410-2291",
-        amount_paise=485000,
-        currency="INR",
-        paid_at="2026-10-17T09:00:05Z",
     )
 ]
 
