@@ -441,8 +441,10 @@ Exit 1 if gated attack success > 0, benign FPR > 0, or a deterministic case does
 ## 11. Dashboard (frontend)
 
 Main page `Live.tsx`, designed for a projector:
-- **MandateBar** (top, dark): what the human authorised + required payee source.
+- **MandateBar** (top): what the human authorised + required payee source.
 - **ModeToggle**: Baseline ⇄ MandateGate, and Run scenario buttons (Happy / Attack / Step-up).
+- **RunProgress**: the run as six stages (mandate signed → agent gathers facts → payment proposed → gate checks →
+  verdict → money), with the active stage spinning and an elapsed timer, so there is never a silent wait.
 - **ProvenanceGraph** (React Flow, static dagre-like left-to-right layout, no physics):
   sources (vendor registry = green, email = red) → agent tool calls → proposal → decision. On BLOCK, highlight the offending path in red.
 - **DecisionPanel**: checklist with ✓/✗, required vs found, big ALLOW / BLOCKED / ASK YOU FIRST banner.
@@ -452,7 +454,9 @@ Main page `Live.tsx`, designed for a projector:
 - Always show which agent ran: "AI agent (gemini-3.8-flash)" vs "Simulated fooled agent (scripted)" (see the demo rule in §8).
 Second page `Attacks.tsx`: suite results table + two big numbers (baseline ASR vs gated ASR, FPR).
 
-Visual direction: a very aesthetic, modern site that is also fast and fully functional.
+Visual direction: a very aesthetic, modern site that is also fast and fully functional. Light "paper and ink" theme
+(warm off-white ground, white sheets, ink-blue seal accent), Playfair Display for headings and the verdict stamp,
+Poppins for UI text, IBM Plex Mono for values. No glows, gradients or glassmorphism.
 
 Frontend toolkit (agreed; add others only if they clearly beat these for a specific job):
 | Job | Tool |
@@ -474,7 +478,9 @@ Frontend toolkit (agreed; add others only if they clearly beat these for a speci
 
 Rules:
 - Function first: every animated element still works and reads correctly with motion off. Motion explains cause and
-  effect (where a value came from, why something was blocked); it never delays or hides information.
+  effect (where a value came from, why something was blocked). Runs are played back at a readable pace
+  (`hooks/usePlayback.ts`, ~6s for the scripted scam; checks tick in, then the stamp lands); with reduced motion
+  everything shows instantly. Nothing is hidden for good: playback only orders what arrived.
 - Optimised: lazy-load heavy libraries (e.g. Three.js) on the view that uses them, code-split per page, animate
   transform/opacity only, aim for 60fps on a laptop, and keep the main dashboard's initial JS small.
 - Respect `prefers-reduced-motion`. Projector legibility (≥16px text, high contrast, 1366×768) wins over decoration.
@@ -505,8 +511,8 @@ ROOT_KEY=change-me-32-bytes-hex
 PASS_KEY=change-me-32-bytes-hex     # shared by gate and payment service
 PASS_TTL_SECONDS=120
 GATE_MODE=gated
-GATE_URL=http://localhost:8000
-PAY_URL=http://localhost:8001
+GATE_URL=http://127.0.0.1:8000
+PAY_URL=http://127.0.0.1:8001
 AGENT_MODE=llm
 LLM_PROVIDER=anthropic
 LLM_MODEL=
@@ -655,8 +661,18 @@ What works (Phase 5, dashboard):
   `ProvenanceGraph` (React Flow, custom Motion nodes, heading nodes, red animated offending path), `VerdictPanel`
   (stamp, six checks, Required ≠ Found, pass ticket, plain-language callout), `EventFeed` (AutoAnimate), `Ledger`
   (attacker rows decided by the tracer's payee field status, not guessed), `ApprovalModal` (Radix dialog, pops on STEP_UP).
-- shadcn-style UI primitives in `src/components/ui` (Radix + CVA, written in-repo). Fonts bundled via Fontsource.
-  Dark "control room" theme in `index.css` `@theme` tokens. Attacks page is lazy-loaded.
+- shadcn-style UI primitives in `src/components/ui` (Radix + CVA, written in-repo). Fonts bundled via Fontsource
+  (Playfair Display, Poppins, IBM Plex Mono). Light paper-and-ink theme in `index.css` `@theme` tokens. Attacks page is
+  lazy-loaded.
+- Playback, so the demo reads as a process instead of a result dumped at once: the store keeps every SSE event in
+  `events` but views read `shown`, which `usePlayback` fills one step at a time (toasts and ledger refreshes fire on
+  reveal; decision + trace are prefetched on arrival). `useVerdict` holds one shared checklist clock in the store, so
+  the progress strip, graph, verdict stamp, ledger and approval modal all switch at the same moment. Clicking Run
+  shows progress at once (`starting` state) while the gate launches the agent; the graph draws "Agent is thinking…" /
+  "Checking…" placeholders. `Conductor` (in `App.tsx`) hosts the per-event hooks so they don't re-render the page.
+- Run start was ~9.6s: importing the `anthropic` SDK took ~6.6s on Windows (now imported lazily in `agents/llm.py`)
+  and `localhost` cost ~2.2s per new connection (IPv6 tried first; services bind 127.0.0.1), so `GATE_URL`/`PAY_URL`
+  are now `http://127.0.0.1:…`. Agent startup is ~1.2s. Restart `make dev` after changing `.env` (`uv --env-file`).
 - `e2e/demo.spec.ts` (Playwright, 1366×768): baseline scam → attacker paid; gated scam → BLOCKED + email:1842; over the
   limit with real Gemini → modal → approve → Rs. 5,200 paid; legit with real Gemini → paid. Screenshots in
   `frontend/e2e/screenshots/` (gitignored) for slides.

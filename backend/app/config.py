@@ -70,8 +70,8 @@ def load_settings() -> Settings:
         pass_key=_require_key("PASS_KEY"),
         pass_ttl_seconds=_pass_ttl(),
         gate_mode=mode,  # type: ignore[arg-type]
-        gate_url=os.environ.get("GATE_URL", "http://localhost:8000"),
-        pay_url=os.environ.get("PAY_URL", "http://localhost:8001"),
+        gate_url=os.environ.get("GATE_URL", "http://127.0.0.1:8000"),
+        pay_url=os.environ.get("PAY_URL", "http://127.0.0.1:8001"),
         gate_db_path=Path(os.environ.get("GATE_DB_PATH", DATA_DIR / "gate.db")),
         pay_db_path=Path(os.environ.get("PAY_DB_PATH", DATA_DIR / "payment.db")),
         allowed_hosts=_allowed_hosts(),

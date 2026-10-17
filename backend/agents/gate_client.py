@@ -25,8 +25,8 @@ class GateClient:
     @classmethod
     def from_env(cls) -> "GateClient":
         return cls(
-            httpx.Client(base_url=os.environ.get("GATE_URL", "http://localhost:8000"), timeout=30),
-            httpx.Client(base_url=os.environ.get("PAY_URL", "http://localhost:8001"), timeout=30),
+            httpx.Client(base_url=os.environ.get("GATE_URL", "http://127.0.0.1:8000"), timeout=30),
+            httpx.Client(base_url=os.environ.get("PAY_URL", "http://127.0.0.1:8001"), timeout=30),
         )
 
     def close(self) -> None:

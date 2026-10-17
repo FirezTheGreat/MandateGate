@@ -1,5 +1,6 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import { useRunEvents } from "../store";
+import { Loader2 } from "lucide-react";
+import { runPhase, useLive, useRunEvents } from "../store";
 import type { GateEvent } from "../types";
 import { clock, inr } from "../lib/utils";
 import { Badge, Card, CardHeader, type Tone } from "./ui/card";
@@ -28,23 +29,32 @@ function describe(e: GateEvent): { kind: string; tone: Tone; title: string; text
 
 export function EventFeed() {
   const events = useRunEvents();
-  const [listRef] = useAutoAnimate<HTMLOListElement>();
+  const run = useLive((s) => s.run);
+  const starting = useLive((s) => s.starting);
+  const phase = runPhase(starting, run, events);
+  const [listRef] = useAutoAnimate<HTMLOListElement>({ duration: 180 });
   const shown = [...events].reverse().slice(0, 60);
   return (
     <Card>
-      <CardHeader title="Live event feed" aside={<span className="font-mono text-xs text-faint">/events/stream</span>} />
-      <ol ref={listRef} className="max-h-[300px] overflow-y-auto">
+      <CardHeader title="Live event feed" aside={<span className="font-mono text-xs text-faint">{events.length ? `${events.length} events` : "/events/stream"}</span>} />
+      <ol ref={listRef} className="max-h-75 overflow-y-auto">
+        {phase.active && (
+          <li key="waiting" className="flex items-center gap-2 border-b border-line/70 py-1.5 text-[13.5px] text-muted">
+            <Loader2 className="size-3.5 animate-spin text-seal" aria-hidden />
+            {starting ? "Launching the agent…" : phase.decision?.approval === "pending" ? "Waiting for your approval…" : "Listening for the next step…"}
+          </li>
+        )}
         {shown.map((e) => {
           const v = describe(e);
           return (
-            <li key={e.seq} className="grid grid-cols-[64px_112px_minmax(0,1fr)] items-baseline gap-2 border-b border-line/70 py-1.5 text-[13.5px]">
+            <li key={e.seq} className="grid grid-cols-[64px_120px_minmax(0,1fr)] items-baseline gap-2 border-b border-line/70 py-1.5 text-[13.5px]">
               <span className="font-mono text-xs text-faint tabular">{clock(e.ts)}</span>
               <Badge tone={v.tone} className="justify-self-start">{v.kind}</Badge>
               <span className="min-w-0 truncate"><b className="font-semibold">{v.title}</b> <span className="text-muted">{v.text}</span></span>
             </li>
           );
         })}
-        {shown.length === 0 && <li className="py-6 text-center text-sm text-muted">Events stream in here as the agent works.</li>}
+        {shown.length === 0 && !phase.active && <li key="empty" className="py-6 text-center text-sm text-muted">Events stream in here as the agent works.</li>}
       </ol>
     </Card>
   );
