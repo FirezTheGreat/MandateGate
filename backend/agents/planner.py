@@ -26,6 +26,14 @@ def delegation_caveats(constraints: dict[str, Any]) -> list[str]:
     ]
 
 
+def finance_task(constraints: dict[str, Any]) -> str:
+    """The job, not the authority: the spending limit stays in the mandate and the token, where
+    the gate enforces it (over the limit → STEP_UP). Telling the agent the cap would make a
+    careful model refuse over-limit invoices itself, and the human would never be asked."""
+    inv, vendor = constraints["invoice_id"], constraints["vendor_id"]
+    return f"Please pay invoice {inv} from our vendor {vendor}.\n\nInvoice id: {inv}. Vendor id: {vendor}."
+
+
 def run(
     client: GateClient, *, instruction: str, root_token: dict[str, Any], constraints: dict[str, Any], session_id: str,
     agent: Literal["llm", "scripted"], conversation_factory: Callable[..., Conversation] = make_conversation,
@@ -39,5 +47,6 @@ def run(
             client, session_id=session_id, token=token,
             invoice_id=constraints["invoice_id"], vendor_id=constraints["vendor_id"], log=log,
         )
-    task = f"{instruction}\n\nInvoice id: {constraints['invoice_id']}. Vendor id: {constraints['vendor_id']}."
+    task = finance_task(constraints)
+    log(f"[planner] task for finance: {task.splitlines()[0]}  (human's instruction: {instruction})")
     return finance.run(client, task=task, session_id=session_id, token=token, conversation_factory=conversation_factory, log=log)

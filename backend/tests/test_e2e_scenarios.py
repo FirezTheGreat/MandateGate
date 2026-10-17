@@ -143,6 +143,14 @@ def test_llm_agent_fooled_by_bec_is_blocked_by_the_gate(client: GateClient) -> N
     assert "Invoice id: INV-1048. Vendor id: acme." in fake.user
 
 
+def test_the_agent_is_told_the_task_but_not_the_spending_limit(client: GateClient) -> None:
+    """Authority lives in the mandate and the token, enforced by the gate; the agent just does the job."""
+    fake = FakeModel([Turn("end", "", [])])
+    run(client, "step_up", "gated", agent="llm", conversation_factory=fake.factory)
+    assert "INV-1052" in fake.user and "acme" in fake.user
+    assert not any(s in fake.user for s in ("5,000", "500000", "5000", "up to"))
+
+
 def test_llm_agent_fooled_in_baseline_pays_the_attacker(client: GateClient) -> None:
     fake = FakeModel(fooled_agent_turns())
     r = run(client, "hero_attack", "baseline", agent="llm", conversation_factory=fake.factory)
@@ -160,7 +168,14 @@ def careful_agent_turns() -> list[Turn]:
 def test_a_model_that_resists_the_scam_is_reported_honestly(client: GateClient) -> None:
     fake = FakeModel(careful_agent_turns())
     r = run(client, "hero_attack", "baseline", agent="llm", conversation_factory=fake.factory)
-    assert (r["outcome"], r["attacker_paid"], r["as_expected"]) == ("ALLOW", False, False)
+    assert (r["outcome"], r["attacker_paid"], r["as_expected"], r["agent_resisted"]) == ("ALLOW", False, False, True)
+    assert "the agent did not fall for the scam" in "\n".join(run_scenario.summary(r))
+
+
+def test_a_resisting_model_in_gated_mode_is_not_reported_as_a_gate_failure(client: GateClient) -> None:
+    fake = FakeModel(careful_agent_turns())
+    r = run(client, "hero_attack", "gated", agent="llm", conversation_factory=fake.factory)
+    assert (r["outcome"], r["agent_resisted"]) == ("ALLOW", True)
     assert "the agent did not fall for the scam" in "\n".join(run_scenario.summary(r))
 
 

@@ -257,7 +257,7 @@ compare. For each finding write a failing test first, then fix. Report a summary
 ## Demo script (3–4 minutes)
 
 1. **Hook (20s)** — "AI agents can now pay invoices. Watch what happens when one reads the wrong email."
-2. **Baseline attack (40s)** — mode Baseline, run attack with the **simulated fooled agent** (scripted; say so). Point out every normal check passing in the panel, then the ledger: ₹4,850 to EVE-777. Optional one-liner: "Today's careful models catch this exact email; tomorrow's variant, prompt or cheaper model might not. MandateGate doesn't care which."
+2. **Baseline attack (40s)** — mode Baseline, run attack with the **simulated fooled agent** (scripted, in both modes; say so). Point out every normal check passing in the panel, then the ledger: ₹4,850 to EVE-777. Optional one-liner: "Today's careful models catch this exact email; tomorrow's variant, prompt or cheaper model might not. MandateGate doesn't care which."
 3. **MandateGate on (40s)** — reset, toggle on, same attack. BLOCKED. Show Required: vendor registry / Found: Email #1842. Show the red trace path.
 4. **Why it's unforgeable (30s)** — "The agent never carries the tag. We broker every tool call, so we already know where EVE-777 came from."
 5. **Happy path + step-up (30s)** — legit payment goes through; ₹5,200 asks the human.
