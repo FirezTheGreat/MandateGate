@@ -546,7 +546,7 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 - [x] Phase 4 — tracer, SSE, signed payment events (approvals were done in Phase 2) (`make test` green: 354 tests)
 - [x] Phase 5 — dashboard: Live page and Attacks page, click-through-tested (`npm run e2e`, 5/5 with `make dev` up)
 - [x] Phase 6 — attack suite + metrics (`make test` green: 385 tests; `make attacks` exit 0)
-- [~] Phase 7 — hardening, polish, demo assets (red-team pass done: `make test` green, 412 tests)
+- [x] Phase 7 — hardening, polish, demo assets (`make test` green: 414 tests; e2e 5/5). Left for people: rehearse 3× with a timer
 
 What works (Phase 0):
 - `models.py` holds every §6 contract (all models `extra="forbid"`, paise `strict` int), mirrored in `frontend/src/types.ts`.
@@ -599,6 +599,14 @@ What works (Phase 2):
   email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
 
 No stubs remain (`stub_data.py` deleted in Phase 6).
+
+What works (Phase 7, demo assets):
+- Backup video: `cd frontend && npm run video` (with `make dev` up) drives the real dashboard through the demo script at
+  1366×768 with on-screen captions → `frontend/video/mandategate-demo.webm` (gitignored, ~2.5 min, uses 2 real-AI runs).
+- Pitch deck: a Claude Slides artifact (private to its owner until shared from its Share menu): 10 slides + 2 Q&A backup
+  slides, real numbers, BLOCK + trace screenshot, timed speaker notes (≈3:50) that double as the rehearsal script.
+- README: hero screenshot + attack-suite screenshot (`docs/`), corrected diagram (the planner is code, not an LLM).
+- Toasts moved to top-right: at 1366×768 bottom-right covered the failed check in the Verdict panel.
 
 What works (Phase 7, fresh-clone test):
 - Clone from GitHub into an empty folder → `make setup` (deps + 3 fresh keys) → `make test` (412) → `make attacks` →

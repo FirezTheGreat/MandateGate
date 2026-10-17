@@ -167,7 +167,7 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [x] **Phase 4**: attack tracer, live event stream, signed payment events
 - [x] **Phase 5**: the dashboard: live provenance graph, verdict, event feed, ledger, approvals, attack-suite results page
 - [x] **Phase 6**: attack suite (21 cases across every attack category) and measured metrics
-- [ ] Phase 7: hardening and demo assets
+- [x] **Phase 7**: red-team pass (27 tests, 5 fixes), fresh-clone test, backup demo video (`npm run video`), pitch deck
 
 Everything up to the demo assets is built and tested (385 backend tests, 5 browser click-through tests).
 The gate is real end to end over HTTP: every tool call goes through the broker, which records where each value came from;

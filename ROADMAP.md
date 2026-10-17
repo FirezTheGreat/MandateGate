@@ -247,6 +247,10 @@ Tasks
 5. Update the pitch slides with the real results numbers and a screenshot of the BLOCK + trace.
 6. Rehearse the pitch 3× with a timer.
 
+Done (2026-10-17): 1–5. Red team: `tests/test_redteam.py`, 5 findings fixed (CLAUDE.md §15). Fresh clone: two gaps fixed
+(AI setup docs; dashboard hung when the AI could not run → `run_finished` event). Video: `npm run video`. Slides: Claude
+Slides artifact with speaker notes timed to the demo script. Left: rehearsal (6).
+
 Red-team prompt
 ```
 Act as an attacker against this repo. Read CLAUDE.md §2 invariants, then try to break
