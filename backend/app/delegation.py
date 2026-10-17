@@ -20,11 +20,11 @@ from typing import Literal
 
 from app.clock import parse_iso
 from app.crypto import constant_time_equal, hmac_sha256, new_id
-from app.models import DelegationToken
+from app.models import MAX_CAVEATS, DelegationToken
 from app.verdict import Verdict
 
 MAX_CAVEAT_CHARS = 256
-MAX_CHAIN_LENGTH = 64
+MAX_CHAIN_LENGTH = MAX_CAVEATS
 
 SetField = Literal["agent", "tool", "invoice_id"]
 SET_FIELDS: tuple[SetField, ...] = ("agent", "tool", "invoice_id")
@@ -114,6 +114,8 @@ def mint_root(mandate_id: str, caveats: list[str], *, root_key: str) -> Delegati
 
 def attenuate(token: DelegationToken, new_caveats: list[str]) -> DelegationToken:
     """Append caveats. Needs only the token's own sig, never the root key."""
+    if len(token.caveats) + len(new_caveats) > MAX_CHAIN_LENGTH:
+        raise CaveatError(f"chain would exceed {MAX_CHAIN_LENGTH} caveats and could never verify")
     for c in new_caveats:
         parse_caveat(c)
     try:

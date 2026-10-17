@@ -523,7 +523,7 @@ def in_process_client() -> Iterator[GateClient]:
         from payment_service.main import app as pay_app
 
         try:
-            with TestClient(gate_app) as gate, TestClient(pay_app) as pay:
+            with TestClient(gate_app, base_url="http://localhost") as gate, TestClient(pay_app, base_url="http://localhost") as pay:
                 pay_app.state.notify = lambda _report: None  # the dashboard feed is not part of the suite
                 yield GateClient(gate, pay)
         finally:

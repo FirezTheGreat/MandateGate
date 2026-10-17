@@ -229,6 +229,7 @@ These are the product, and none of them is ever weakened to make a demo pass. Th
 - **Out of scope:** a compromised vendor registry or invoice database. That is a traditional data-integrity problem with existing controls. MandateGate stops the *agent* from being the weak link.
 - **Shared HMAC key:** the gate and payment service share `PASS_KEY` for this prototype. A production deployment would use asymmetric signatures.
 - **Normalisation:** it covers Unicode NFKC, zero-width characters, case, and separators like spaces and dashes. It is not a complete homoglyph defence.
+- **Demo endpoints have no login:** creating mandates, approving step-ups and switching modes are unauthenticated in this prototype. Both services listen on 127.0.0.1 only, refuse foreign Host headers (DNS rebinding) and refuse cross-site state-changing requests, so a web page cannot reach them; a local process could. Agents only ever get the brokered tools. Production would authenticate the human.
 - **The suite is fixture-based:** 21 hand-written cases against one demo vendor, and one AI model. The zeros with MandateGate come from deterministic checks, so they carry over to other cases of the same kind. The AI "fooled" rate is specific to that model, those prompts and those emails.
 
 ## Contributing (team workflow)

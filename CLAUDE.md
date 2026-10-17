@@ -64,7 +64,7 @@ breaking one, stop and flag it.
 5. **Passes are single-use, short-lived (120s), and bound to exact fields.** Any field mismatch, expired pass, reused nonce, or bad signature → reject.
 6. **Delegation caveats are conjunctive.** All caveats in the chain must hold. A child can append caveats; it can never remove or replace one (the HMAC chain breaks). Amount caveats are enforced as the tightest limit in the chain; going over it requires human approval (STEP_UP, §6).
 7. **Fail closed.** Any exception, missing record, parse error, or ambiguity in the decision path → `BLOCK` with a reason. Never default to ALLOW.
-8. **Money is integer paise.** Never floats. `₹4,850 = 485000`.
+8. **Money is integer paise.** Never floats. `₹4,850 = 485000`. Bounded `0..MAX_PAISE` (10^15) in every contract.
 9. **Constant-time comparison** for all signatures (`hmac.compare_digest`).
 10. **Canonical JSON** for everything that gets signed: `json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")`. One helper in `crypto.py`; never re-implement it.
 11. **Agent output is data, never instructions to the gate.** Free text from agents is stored for display only, never parsed into decisions.
@@ -356,7 +356,7 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
 | POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent, agent_label}`; `app/runner.py` spawns `agents.run_scenario --on-step-up wait` in the current mode and returns once the run prints `[session] <id>`. One run at a time (409 `run_in_progress`); unknown scenario 404; run log in `backend/data/runs/<session>.log` |
 | GET | `/attacks/results` | `attacks/results.json` (`AttackResults`, written by `make attacks`) for the Attacks page. 404 `no_results` if the suite has not run, 503 `bad_results` if the file does not match the contract. Nothing is computed or invented here |
-| POST | `/internal/payment-event` | Payment service → gate: a `PaymentEventReport` (paid or refused), published as a `payment` event. Display only. Requires `X-MandateGate-Signature` = HMAC(PASS_KEY, canonical body) and `sent_at` within 60s, else 401 (`bad_signature` / `stale`) |
+| POST | `/internal/payment-event` | Payment service → gate: a `PaymentEventReport` (paid or refused), published as a `payment` event. Display only. Requires `X-MandateGate-Signature` = HMAC(`derive_key(PASS_KEY, "payment-event")`, canonical body) and `sent_at` within 60s, else 401 (`bad_signature` / `stale`) |
 
 Brokered tools: `list_inbox`, `read_email(email_id)`, `get_invoice(invoice_id)`, `get_vendor(vendor_id)`, `fetch_page(url)`
 (http(s) URL; serves only the session scenario's `fixtures/web/` pages, else 404). Scenarios may override an invoice's
@@ -546,7 +546,7 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 - [x] Phase 4 — tracer, SSE, signed payment events (approvals were done in Phase 2) (`make test` green: 354 tests)
 - [x] Phase 5 — dashboard: Live page and Attacks page, click-through-tested (`npm run e2e`, 5/5 with `make dev` up)
 - [x] Phase 6 — attack suite + metrics (`make test` green: 385 tests; `make attacks` exit 0)
-- [ ] Phase 7 — hardening, polish, demo assets
+- [~] Phase 7 — hardening, polish, demo assets (red-team pass done: `make test` green, 412 tests)
 
 What works (Phase 0):
 - `models.py` holds every §6 contract (all models `extra="forbid"`, paise `strict` int), mirrored in `frontend/src/types.ts`.
@@ -599,6 +599,22 @@ What works (Phase 2):
   email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
 
 No stubs remain (`stub_data.py` deleted in Phase 6).
+
+What works (Phase 7, red-team pass):
+- `tests/test_redteam.py` (27 tests, written failing first). Probed every §2 invariant: no path found for an agent to set
+  provenance/trust, to get paid without a valid single-use pass, or to turn an exception into ALLOW; caveat parsing is
+  strict; no float money; no `==` on secrets (an AST guard test now enforces it). Fixed what it did find:
+  F1 no Host/Origin checks → `app/guard.py` (pure ASGI, both services): Host must be in `ALLOWED_HOSTS` (default
+  localhost, 127.0.0.1, ::1) → else 400 `bad_host`; a non-GET with a foreign `Origin` → 403 `bad_origin` (no Origin =
+  not a browser = allowed). Before: a web page could POST /admin/reset cross-site, or via DNS rebinding flip the gate to
+  baseline, approve step-ups and create mandates. TestClients now use `base_url="http://localhost"`.
+  F2 money unbounded (2^63 paise overflowed SQLite → 500) → `Paise` ≤ `MAX_PAISE` = 10^15.
+  F3 identifiers unbounded (1 MB payee stored and streamed; mandate ids the caveat grammar cannot express) → bounded
+  `Ident`/`Account`/`Hex`/`Caveat` types on inbound models, patterns on `MandateConstraints` and `principal`; unexpected
+  tool-arg names truncated to 64 in events. Sizes only: a strange short value still gets a recorded BLOCK.
+  F4 `/delegate` minted >64-caveat chains that could never verify → 400 `invalid_caveat`.
+  F5 PASS_KEY signed both passes and payment events (not exploitable: different shapes, signature never exposed) →
+  events use `derive_key(PASS_KEY, "payment-event")`.
 
 What works (Phase 6, attack suite):
 - Results (2026-10-17, `backend/attacks/results.md`): simulated agent: attack success **90% without → 0% with**
@@ -669,9 +685,10 @@ model that pays the real vendor is reported as "the agent did not fall for the s
 Known issues:
 - Windows: `make` runs recipes via cmd.exe, so keep Makefile recipes to `cd x && cmd` (no cp/rm/export).
 - None open on contracts.
-- Admin and human endpoints (`/reset` on both services, `/admin/*`, `/sessions`, `/approvals/*`) are unauthenticated;
-  services bind to 127.0.0.1 only. Agents must only ever be given the brokered tools + `propose_payment`, never these.
-  Fine for the demo, listed as a limitation.
+- Admin and human endpoints (`/reset` on both services, `/admin/*`, `/mandates`, `/sessions`, `/approvals/*`) are
+  unauthenticated; services bind to 127.0.0.1 only, and `app/guard.py` refuses foreign Host headers (DNS rebinding) and
+  cross-site state-changing requests, so a web page cannot reach them. Any local process still can. Agents are only ever
+  given the brokered tools + `propose_payment`, never these. Listed as a limitation; production = authenticated humans.
 - `GET /decisions` returns issued passes. A pass can only pay its approved payee/amount once, so exposure risks a
   premature payment to the right account, not theft.
 - Token `token_id` / `parent_token_id` are not covered by the HMAC chain (only mandate_id + caveats are). They are

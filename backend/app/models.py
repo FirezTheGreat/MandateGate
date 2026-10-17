@@ -51,8 +51,22 @@ CHECK_ORDER: tuple[CheckName, ...] = (
     "amount_within_limit",
 )
 
-# Integer paise only. strict=True rejects 4850.0 and "485000".
-Paise = Annotated[int, Field(strict=True, ge=0)]
+# Integer paise only. strict=True rejects 4850.0 and "485000". Bounded (Rs. 10 lakh crore) so no
+# amount can overflow SQLite's 64-bit INTEGER or the caveat grammar's 16 digits.
+MAX_PAISE = 10**15
+Paise = Annotated[int, Field(strict=True, ge=0, le=MAX_PAISE)]
+
+# Bounded strings on everything that comes in: sizes, not judgement. A strange but short value
+# still reaches the decision engine, which records a BLOCK the dashboard can show.
+Ident = Annotated[str, Field(min_length=1, max_length=64)]
+Account = Annotated[str, Field(min_length=1, max_length=128)]
+Hex = Annotated[str, Field(max_length=128)]
+MAX_CAVEATS = 64  # longest delegation chain the gate verifies
+Caveat = Annotated[str, Field(max_length=256)]
+# What a human may authorise must be expressible as a caveat (`invoice_id = X`) and as broker args.
+InvoiceId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,32}$")]
+VendorId = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,32}$")]
+Principal = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.@-]{1,64}$")]
 
 # Scenario names reach file paths and subprocess arguments, hence the strict pattern.
 ScenarioName = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,64}$")]
@@ -66,8 +80,8 @@ class Contract(BaseModel):
 
 
 class MandateConstraints(Contract):
-    invoice_id: str
-    vendor_id: str
+    invoice_id: InvoiceId
+    vendor_id: VendorId
     max_amount_paise: Paise
     currency: Currency = "INR"
     payee_source: SourceType = "vendor_registry"
@@ -86,7 +100,7 @@ class Mandate(Contract):
 class MandateCreateRequest(Contract):
     """Dashboard form → POST /mandates."""
 
-    principal: str
+    principal: Principal
     constraints: MandateConstraints
     ttl_seconds: int = Field(default=3600, strict=True, ge=60, le=86400)
 
@@ -95,11 +109,11 @@ class MandateCreateRequest(Contract):
 
 
 class DelegationToken(Contract):
-    token_id: str
-    mandate_id: str
-    caveats: list[str]
-    parent_token_id: str | None = None
-    sig: str  # hex; sig0 = HMAC(ROOT_KEY, mandate_id), sig_i = HMAC(sig_{i-1}, caveat_i)
+    token_id: Ident
+    mandate_id: Ident
+    caveats: list[Caveat] = Field(max_length=MAX_CAVEATS)
+    parent_token_id: Ident | None = None
+    sig: Hex  # hex; sig0 = HMAC(ROOT_KEY, mandate_id), sig_i = HMAC(sig_{i-1}, caveat_i)
 
 
 class MandateCreated(Contract):
@@ -113,7 +127,7 @@ class DelegateRequest(Contract):
     """POST /delegate: append caveats to a token (attenuation only ever narrows)."""
 
     token: DelegationToken
-    caveats: list[str] = Field(min_length=1)
+    caveats: list[Caveat] = Field(min_length=1, max_length=MAX_CAVEATS)
 
 
 # --------------------------------------------------------------------------- sessions
@@ -122,7 +136,7 @@ class DelegateRequest(Contract):
 class SessionCreateRequest(Contract):
     """POST /sessions: one agent run, bound to one mandate. `scenario` picks the demo inbox."""
 
-    mandate_id: str
+    mandate_id: Ident
     scenario: ScenarioName | None = None
 
 
@@ -147,8 +161,8 @@ class ToolInfo(Contract):
 class ToolCallRequest(Contract):
     """POST /tools/{name}. Tool name comes from the path, never from the body."""
 
-    session_id: str
-    agent_id: str
+    session_id: Ident
+    agent_id: Ident
     token: DelegationToken
     args: dict[str, Any] = Field(default_factory=dict)
 
@@ -183,12 +197,12 @@ class ValueRecord(Contract):
 class PaymentProposal(Contract):
     """Agent → gate (`propose_payment`). Extra fields such as `trusted` are rejected."""
 
-    session_id: str
+    session_id: Ident
     token: DelegationToken
-    agent_id: str
-    invoice_id: str
-    vendor_id: str
-    payee_account: str
+    agent_id: Ident
+    invoice_id: Ident
+    vendor_id: Ident
+    payee_account: Account
     amount_paise: Paise
     currency: Currency
     memo: str = Field(default="", max_length=2000)  # display only, never parsed
@@ -218,16 +232,16 @@ class CheckResult(Contract):
 class OnePass(Contract):
     """HMAC-sealed, single-use, short-lived pass bound to exact payment fields."""
 
-    pass_id: str
-    decision_id: str
-    mandate_id: str
-    invoice_id: str
-    payee_account: str
+    pass_id: Ident
+    decision_id: Ident
+    mandate_id: Ident
+    invoice_id: Ident
+    payee_account: Account
     amount_paise: Paise
     currency: Currency
-    nonce: str  # 32 hex
-    exp: str
-    sig: str  # hex HMAC(PASS_KEY, canonical(pass without sig))
+    nonce: Hex  # 32 hex
+    exp: Ident
+    sig: Hex  # hex HMAC(PASS_KEY, canonical(pass without sig))
 
 
 class Decision(Contract):
@@ -268,8 +282,8 @@ class ApprovalRequest(Contract):
 class Payment(Contract):
     """The payment being executed. Must equal the pass fields exactly."""
 
-    invoice_id: str
-    payee_account: str
+    invoice_id: Ident
+    payee_account: Account
     amount_paise: Paise
     currency: Currency
 

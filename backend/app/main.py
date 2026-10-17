@@ -13,6 +13,7 @@ from app.clock import to_iso, utc_now
 from app.config import load_settings
 from app.errors import install_error_handlers
 from app.fixtures import load_fixtures
+from app.guard import RequestGuard
 from app.runner import Runner
 from app.routes import admin, approvals, attacks, decisions, internal, mandates, proposals, sessions, tools, trace
 from app.routes import events as events_routes
@@ -59,6 +60,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+app.add_middleware(RequestGuard, origins=DASHBOARD_ORIGINS)  # outermost: Host + cross-site POST checks first
 install_error_handlers(app, on_invalid_input=log_suspicious_input)
 
 for module in (mandates, sessions, tools, proposals, approvals, decisions, trace, events_routes, admin, attacks, internal):

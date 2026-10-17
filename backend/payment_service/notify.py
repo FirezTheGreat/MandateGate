@@ -1,8 +1,9 @@
 """Tell the gate about every payment attempt (paid or refused), so it reaches the live feed.
 
 Best effort, display only: a notification failure never affects the payment, and the gate
-never decides anything from these. Each report is signed (HMAC with PASS_KEY over the
-canonical body) and time-stamped, so an agent cannot inject fake payments into the feed.
+never decides anything from these. Each report is signed (HMAC over the canonical body, with a
+key derived from PASS_KEY for this purpose only) and time-stamped, so an agent cannot inject fake
+payments into the feed, and no report signature could ever pass for a pass signature.
 """
 
 import logging
@@ -11,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
-from app.crypto import sign
+from app.crypto import PAYMENT_EVENT_KEY, derive_key, sign
 from app.models import PaymentEventReport
 
 SIGNATURE_HEADER = "X-MandateGate-Signature"
@@ -22,6 +23,8 @@ Notifier = Callable[[PaymentEventReport], None]
 
 
 def make_notifier(http: httpx.Client, key: str, *, background: bool = True) -> Notifier:
+    key = derive_key(key, PAYMENT_EVENT_KEY)
+
     def deliver(report: PaymentEventReport) -> None:
         body = report.model_dump(mode="json")
         try:

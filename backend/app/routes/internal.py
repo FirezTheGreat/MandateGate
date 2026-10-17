@@ -1,6 +1,6 @@
 """POST /internal/payment-event: payment service → gate, so payments (and refusals) reach the feed.
 
-Authenticated: header X-MandateGate-Signature = hex HMAC(PASS_KEY, canonical(body)), and `sent_at`
+Authenticated: header X-MandateGate-Signature = hex HMAC(derive_key(PASS_KEY, "payment-event"), canonical(body)), and `sent_at`
 must be within FRESH_S of now (limits replays of a captured report). Display only: nothing here
 can influence a decision or a pass.
 """
@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app import db, events
 from app.clock import parse_iso, to_iso, utc_now
-from app.crypto import verify
+from app.crypto import PAYMENT_EVENT_KEY, derive_key, verify
 from app.deps import ConnDep, SettingsDep
 from app.errors import api_error
 from app.models import OkResponse, PaymentEventReport
@@ -26,7 +26,7 @@ def payment_event(
     report: PaymentEventReport, settings: SettingsDep, conn: ConnDep,
     x_mandategate_signature: str = Header(default=""),
 ) -> OkResponse | JSONResponse:
-    if not verify(settings.pass_key, report.model_dump(mode="json"), x_mandategate_signature):
+    if not verify(derive_key(settings.pass_key, PAYMENT_EVENT_KEY), report.model_dump(mode="json"), x_mandategate_signature):
         return api_error(401, "bad_signature", "payment event is not signed by the payment service")
     now = utc_now()
     try:

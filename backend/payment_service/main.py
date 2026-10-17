@@ -19,6 +19,7 @@ from app import db
 from app.clock import to_iso, utc_now
 from app.config import Settings, load_settings
 from app.errors import api_error, install_error_handlers
+from app.guard import RequestGuard
 from app.models import OkResponse, PaymentEventReport, PayRequest, Receipt
 from payment_service.notify import make_notifier
 from payment_service.verify import PayError, verify_and_pay
@@ -46,6 +47,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+app.add_middleware(RequestGuard, origins=DASHBOARD_ORIGINS)  # outermost: Host + cross-site POST checks first
 install_error_handlers(app)
 
 

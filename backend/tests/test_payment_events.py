@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from agents import run_scenario
 from agents.gate_client import GateClient
 from app.clock import to_iso, utc_now
-from app.crypto import sign
+from app.crypto import PAYMENT_EVENT_KEY, derive_key, sign
 from app.models import PaymentEventReport
 from payment_service.main import app as pay_app
 from payment_service.notify import SIGNATURE_HEADER, make_notifier
@@ -71,13 +71,13 @@ def test_forged_payment_events_are_rejected(gate: TestClient, headers: dict[str,
 
 def test_stale_payment_events_are_rejected(gate: TestClient) -> None:
     body = report(sent_at=to_iso(utc_now() - timedelta(minutes=5)))
-    r = gate.post("/internal/payment-event", json=body, headers={SIGNATURE_HEADER: sign(TEST_KEY, body)})
+    r = gate.post("/internal/payment-event", json=body, headers={SIGNATURE_HEADER: sign(derive_key(TEST_KEY, PAYMENT_EVENT_KEY), body)})
     assert (r.status_code, r.json()["error"]) == (401, "stale")
 
 
 def test_signed_payment_event_is_accepted(gate: TestClient) -> None:
     body = report()
-    r = gate.post("/internal/payment-event", json=body, headers={SIGNATURE_HEADER: sign(TEST_KEY, body)})
+    r = gate.post("/internal/payment-event", json=body, headers={SIGNATURE_HEADER: sign(derive_key(TEST_KEY, PAYMENT_EVENT_KEY), body)})
     assert r.status_code == 200
 
 

@@ -39,6 +39,15 @@ def hmac_sha256(key: bytes, msg: bytes) -> bytes:
     return hmac.new(key, msg, hashlib.sha256).digest()
 
 
+PAYMENT_EVENT_KEY = "payment-event"  # derive_key(PASS_KEY, ...) signs payment-service → gate reports
+
+
+def derive_key(key: str, purpose: str) -> str:
+    """A separate key per purpose (domain separation): hex HMAC(key, "mandategate/<purpose>").
+    A signature made for one purpose can never verify for another, even though one secret is configured."""
+    return hmac_sha256(_key_bytes(key), f"mandategate/{purpose}".encode("utf-8")).hex()
+
+
 def constant_time_equal(a: str, b: str) -> bool:
     """Compare two signature strings in constant time. Non-strings are never equal."""
     if not isinstance(a, str) or not isinstance(b, str):

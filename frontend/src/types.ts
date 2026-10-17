@@ -36,7 +36,8 @@ export const CHECK_ORDER: readonly CheckName[] = [
   "amount_within_limit",
 ];
 
-/** Integer paise. ₹4,850 = 485000. Never a float. */
+/** Integer paise, 0..MAX_PAISE (10^15). ₹4,850 = 485000. Never a float. */
+export const MAX_PAISE = 1_000_000_000_000_000;
 export type Paise = number;
 
 // --- mandate

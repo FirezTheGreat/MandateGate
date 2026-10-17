@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from app.main import app as gate_app
 from payment_service.main import app as pay_app
 
-TEST_KEY = "ab" * 32  # every service key in tests (MANDATE_KEY, ROOT_KEY, PASS_KEY)
+TEST_KEY = "ab" * 32
+LOCAL = "http://localhost"  # the services only answer to local Host headers (app/guard.py)  # every service key in tests (MANDATE_KEY, ROOT_KEY, PASS_KEY)
 
 
 @dataclass(frozen=True)
@@ -32,12 +33,12 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
 
 @pytest.fixture
 def gate(env: Env) -> Iterator[TestClient]:
-    with TestClient(gate_app) as client:
+    with TestClient(gate_app, base_url=LOCAL) as client:
         yield client
 
 
 @pytest.fixture
 def pay(env: Env) -> Iterator[TestClient]:
-    with TestClient(pay_app) as client:
+    with TestClient(pay_app, base_url=LOCAL) as client:
         pay_app.state.notify = lambda _report: None  # no gate to notify in tests; test_payment_events wires one
         yield client

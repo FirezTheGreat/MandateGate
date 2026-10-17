@@ -144,7 +144,7 @@ def tool_infos() -> list[ToolInfo]:
 
 def parse_args(spec: ToolSpec, args: dict[str, Any]) -> tuple[_Args | None, list[str], str]:
     """(parsed, unexpected_keys, error_detail). parsed is None when invalid."""
-    unexpected = sorted(k for k in args if k not in spec.args_model.model_fields)
+    unexpected = sorted(k[:64] for k in args if k not in spec.args_model.model_fields)
     try:
         return spec.args_model.model_validate(args), unexpected, ""
     except ValidationError as e:

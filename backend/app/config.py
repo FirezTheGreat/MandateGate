@@ -34,6 +34,7 @@ class Settings:
     pay_url: str
     gate_db_path: Path
     pay_db_path: Path
+    allowed_hosts: tuple[str, ...]  # Host headers both services answer to (DNS-rebinding defence)
 
 
 def _require_key(name: str) -> str:
@@ -53,6 +54,12 @@ def _pass_ttl() -> int:
     return int(raw)
 
 
+def _allowed_hosts() -> tuple[str, ...]:
+    raw = os.environ.get("ALLOWED_HOSTS", "").strip()
+    hosts = tuple(h.strip().lower() for h in raw.split(",") if h.strip())
+    return hosts or ("localhost", "127.0.0.1", "::1")
+
+
 def load_settings() -> Settings:
     mode = os.environ.get("GATE_MODE", "gated")
     if mode not in ("gated", "baseline"):
@@ -67,4 +74,5 @@ def load_settings() -> Settings:
         pay_url=os.environ.get("PAY_URL", "http://localhost:8001"),
         gate_db_path=Path(os.environ.get("GATE_DB_PATH", DATA_DIR / "gate.db")),
         pay_db_path=Path(os.environ.get("PAY_DB_PATH", DATA_DIR / "payment.db")),
+        allowed_hosts=_allowed_hosts(),
     )
