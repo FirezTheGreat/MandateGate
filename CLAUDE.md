@@ -114,7 +114,7 @@ and finds it only ever appeared in Email #1842 (untrusted). The agent cannot for
 | Crypto | stdlib `hmac`, `hashlib` (HMAC-SHA-256), `secrets` for nonces/keys |
 | Agents | Python, LLM via provider-pluggable `agents/llm.py` (Anthropic SDK default; OpenAI-compatible fallback) |
 | Live updates | Server-Sent Events (`sse-starlette`) |
-| Frontend | React + Vite + TypeScript, React Flow (`@xyflow/react`), Tailwind, GSAP for motion |
+| Frontend | React + Vite + TypeScript, React Flow (`@xyflow/react`), Tailwind, plus modern motion/visual libraries chosen per effect (e.g. Motion (motion.dev), GSAP, Three.js), see §11 |
 | Tests | pytest, httpx `TestClient` |
 | Env/tooling | `uv` for Python deps, `npm` for frontend, `Makefile` for commands |
 
@@ -437,10 +437,15 @@ Main page `Live.tsx`, designed for a projector:
 - **Ledger**: payments that actually executed (the attacker row shows up in red in baseline mode).
 Second page `Attacks.tsx`: suite results table + two big numbers (baseline ASR vs gated ASR, FPR).
 
-Visual direction: modern and visually striking, with dynamic motion built on GSAP (e.g. the verdict landing,
-provenance paths drawing in, events streaming). Rules for motion: it must explain cause and effect (where a value came
-from, why something was blocked), never delay or hide information, and respect `prefers-reduced-motion`.
-Projector legibility (≥16px text, high contrast, 1366×768) still wins over decoration.
+Visual direction: a very aesthetic, modern site that is also fast and fully functional. Use whichever modern UI
+tools fit each effect; none is mandatory. For example, Motion (motion.dev) for UI and layout transitions, GSAP for
+orchestrated timelines (the verdict landing, provenance paths drawing in), Three.js only for a deliberate 3D/hero moment.
+Rules:
+- Function first: every animated element still works and reads correctly with motion off. Motion explains cause and
+  effect (where a value came from, why something was blocked); it never delays or hides information.
+- Optimised: lazy-load heavy libraries (e.g. Three.js) on the view that uses them, code-split per page, animate
+  transform/opacity only, aim for 60fps on a laptop, and keep the main dashboard's initial JS small.
+- Respect `prefers-reduced-motion`. Projector legibility (≥16px text, high contrast, 1366×768) wins over decoration.
 Layout reference: the "MandateGate Control Room" prototype (https://claude.ai/artifact/2jognSWLwxJh2dULfL42zB, private:
 ask Firez for access). It fixes the information layout only; its styling and animations are throwaway.
 
