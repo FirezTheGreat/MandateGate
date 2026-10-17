@@ -11,10 +11,11 @@ export const DialogClose = DialogPrimitive.Close;
 export function DialogContent({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-band/75 backdrop-blur-sm" />
+      {/* No backdrop blur: it repaints the whole page every frame on a laptop GPU. */}
+      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-ink/35" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-[min(92vw,30rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl shadow-black/50",
+          "fixed left-1/2 top-1/2 z-50 w-[min(92vw,31rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-[0_24px_60px_-20px_rgba(31,29,24,0.35)]",
           className,
         )}
       >

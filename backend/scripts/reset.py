@@ -8,8 +8,8 @@ import httpx
 
 def main() -> int:
     targets = [
-        ("gate", os.environ.get("GATE_URL", "http://localhost:8000") + "/admin/reset"),
-        ("payment service", os.environ.get("PAY_URL", "http://localhost:8001") + "/reset"),
+        ("gate", os.environ.get("GATE_URL", "http://127.0.0.1:8000") + "/admin/reset"),
+        ("payment service", os.environ.get("PAY_URL", "http://127.0.0.1:8001") + "/reset"),
     ]
     failed = False
     for name, url in targets:

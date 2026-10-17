@@ -1,39 +1,51 @@
 /* Fonts are bundled (Fontsource): no font CDN, so venue Wi-Fi cannot break the demo. */
-@import "@fontsource-variable/archivo/wdth.css";
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource-variable/playfair-display/wght.css";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "@fontsource/ibm-plex-mono/600.css";
 @import "@xyflow/react/dist/style.css";
 @import "tailwindcss";
 
-/* Control room on a dark ground: deep navy (not black), high-contrast ink for projectors,
-   one accent (seal blue) and three semantic colours (ok / bad / warn). */
+/* Paper and ink: a warm off-white ground, white sheets, near-black ink. One accent (ink blue, the
+   seal) and three semantic colours (ok / bad / warn) dark enough to read on a projector. */
 @theme {
-  --color-bg: #0a0f1e;
-  --color-panel: #111a2e;
-  --color-panel-2: #16213a;
-  --color-line: #253150;
-  --color-ink: #eaf0fb;
-  --color-muted: #9ba7c5;
-  --color-faint: #6b7798;
-  --color-seal: #86a0ff;
-  --color-seal-ink: #0a0f1e;
-  --color-ok: #3fd294;
-  --color-bad: #ff6d64;
-  --color-warn: #f4b64e;
-  --color-band: #050915;
+  --color-bg: #f5f2ea;
+  --color-panel: #fffdf9;
+  --color-panel-2: #f3efe6;
+  --color-line: #e4ddcf;
+  --color-ink: #1f1d18;
+  --color-muted: #5d584d;
+  --color-faint: #7c7668;
+  --color-seal: #2c4a7e;
+  --color-seal-ink: #ffffff;
+  --color-ok: #2a7a4b;
+  --color-bad: #b8392a;
+  --color-warn: #a86400;
+  --color-band: #ebe6da;
 
-  --font-display: "Archivo Variable", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Playfair Display Variable", "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-sans: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  --animate-breathe: breathe 1.6s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -51,12 +63,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.font-display {
-  font-stretch: 112%;
-}
-
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Playfair defaults to old-style figures; amounts and invoice numbers read better lining. */
+.font-display {
+  font-feature-settings: "lnum" 1;
 }
 
 :focus-visible {
@@ -64,10 +77,18 @@ body {
   outline-offset: 2px;
 }
 
-/* React Flow: blend into the panel. */
+/* Loading placeholder: a soft sweep, transform-free so it costs nothing. */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-panel-2) 25%, #e9e3d6 50%, var(--color-panel-2) 75%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* React Flow: sits on the sheet, dotted like drafting paper. */
 .react-flow {
   --xy-background-color: transparent;
-  --xy-edge-stroke: var(--color-faint);
+  --xy-edge-stroke: #a39c8c;
   --xy-attribution-background-color: transparent;
 }
 .react-flow__attribution {
@@ -87,7 +108,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .react-flow__edge-path {
+  .react-flow__edge-path,
+  .skeleton,
+  .animate-breathe,
+  .animate-spin {
     animation: none !important;
   }
 }

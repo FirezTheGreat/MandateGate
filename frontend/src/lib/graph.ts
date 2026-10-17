@@ -12,6 +12,7 @@ interface NodeFields {
   status: TraceStatus;
   trust?: string | null;
   detail?: string | null;
+  pending?: boolean; // placeholder for a step that is still happening (agent thinking, gate checking)
 }
 
 // React Flow requires node data to be an indexable record.
@@ -26,7 +27,7 @@ export interface Graph {
 const COL_W = 280;
 const ROW_H = 112;
 // Hex, not CSS vars: SVG marker attributes don't resolve var().
-const EDGE_COLOR: Record<TraceStatus, string> = { good: "#3fd294", bad: "#ff6d64", warn: "#f4b64e", neutral: "#6b7798" };
+const EDGE_COLOR: Record<TraceStatus, string> = { good: "#2a7a4b", bad: "#b8392a", warn: "#a86400", neutral: "#a39c8c" };
 const DECISION_LABEL: Record<string, string> = { BLOCK: "BLOCKED", ALLOW: "ALLOWED", STEP_UP: "ASK YOU FIRST" };
 
 /** Short name on the first line, specifics on the second, so nothing truncates at demo zoom. */
@@ -65,7 +66,7 @@ function edge(id: string, source: string, target: string, status: TraceStatus, f
     label: field ? (field === "payee_account" ? "payee" : "amount") : undefined,
     labelBgPadding: [6, 3],
     labelBgBorderRadius: 6,
-    style: { stroke: color, strokeWidth: status === "bad" ? 3 : status === "good" ? 2.2 : 1.4, opacity: status === "neutral" ? 0.55 : 1 },
+    style: { stroke: color, strokeWidth: status === "bad" ? 3 : status === "good" ? 2.2 : 1.4, opacity: status === "neutral" ? 0.75 : 1 },
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
   };
 }
@@ -102,8 +103,9 @@ export function graphFromTrace(t: TraceGraph): Graph {
   return { nodes: [...headings(), ...nodes], edges: t.edges.map((e) => edge(e.id, e.source, e.target, e.data.status, e.data.field)) };
 }
 
-/** The picture while the agent is still working, from live events only. */
-export function graphFromEvents(events: GateEvent[]): Graph {
+/** The picture while the agent is still working, from live events only. `working`: the run is still
+ *  going, so the next step is drawn as a placeholder (the agent thinking, or the gate checking). */
+export function graphFromEvents(events: GateEvent[], working = false): Graph {
   const calls: { id: string; label: string; detail: string }[] = [];
   const sources: { ref: string; trust: string }[] = [];
   const links = new Set<string>();
@@ -144,8 +146,14 @@ export function graphFromEvents(events: GateEvent[]): Graph {
     nodes.push(node("proposal", "proposal", 2, mid, { label: `Pay ${inr(proposal.amount)}`, status: "neutral", detail: `to ${proposal.payee}` }));
   }
   if (outcome) {
-    nodes.push(node("decision", "decision", 3, mid, { label: DECISION_LABEL[outcome] ?? outcome, status: "neutral", detail: "checking the trace…" }));
+    nodes.push(node("decision", "decision", 3, mid, { label: DECISION_LABEL[outcome] ?? outcome, status: "neutral", detail: "tracing every value…", pending: true }));
     edges.push(edge("proposal->decision", "proposal", "decision", "neutral"));
+  } else if (proposal && working) {
+    nodes.push(node("decision", "decision", 3, mid, { label: "Checking…", status: "neutral", detail: "six checks", pending: true }));
+    edges.push(edge("proposal->decision", "proposal", "decision", "neutral"));
+  } else if (working) {
+    nodes.push(node("thinking", "tool_call", 1, calls.length, { label: calls.length ? "Agent is thinking…" : "Agent is starting…", status: "neutral", detail: "next tool call", pending: true }));
+    if (nodes.length === 1) nodes.unshift(...headings());
   }
   return { nodes, edges };
 }

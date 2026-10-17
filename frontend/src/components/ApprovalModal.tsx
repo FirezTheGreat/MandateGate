@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api";
 import { inr } from "../lib/utils";
@@ -30,14 +30,14 @@ export function ApprovalModal({ open, onOpenChange }: { open: boolean; onOpenCha
       <DialogContent>
         {request && (
           <>
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-warn">
-              <AlertTriangle className="size-4" aria-hidden /> Ask you first
+            <div className="flex items-center gap-2 text-[13px] font-semibold text-warn">
+              <AlertTriangle className="size-4" aria-hidden /> MandateGate is asking you first
             </div>
-            <DialogTitle className="mt-1 font-display text-2xl font-black">Approve {inr(request.amount_paise)}?</DialogTitle>
+            <DialogTitle className="mt-1 font-display text-[28px] font-bold">Approve {inr(request.amount_paise)}?</DialogTitle>
             <DialogDescription className="mt-1 text-muted">
               The agent wants to pay more than you approved. Everything else checks out.
             </DialogDescription>
-            <dl className="my-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <dl className="my-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 rounded-xl border border-line bg-panel-2/60 p-4 text-sm">
               <dt className="text-muted">Pay</dt><dd className="font-mono font-semibold">{request.payee_account}</dd>
               <dt className="text-muted">Source</dt><dd className="font-semibold">Vendor registry (trusted)</dd>
               <dt className="text-muted">Invoice</dt><dd className="font-mono font-semibold">{request.invoice_id} · amount matches</dd>
@@ -46,9 +46,11 @@ export function ApprovalModal({ open, onOpenChange }: { open: boolean; onOpenCha
               <dd className="font-mono font-semibold text-warn">{inr(request.amount_paise)} · {inr(request.amount_paise - request.max_amount_paise)} over</dd>
             </dl>
             <div className="flex justify-end gap-2">
-              <Button onClick={() => resolve.mutate(false)} disabled={resolve.isPending}>Deny</Button>
+              <Button onClick={() => resolve.mutate(false)} disabled={resolve.isPending}>
+                {resolve.isPending && resolve.variables === false && <Loader2 className="size-4 animate-spin" aria-hidden />} Deny
+              </Button>
               <Button variant="ok" onClick={() => resolve.mutate(true)} disabled={resolve.isPending} autoFocus>
-                Approve {inr(request.amount_paise)}
+                {resolve.isPending && resolve.variables === true && <Loader2 className="size-4 animate-spin" aria-hidden />} Approve {inr(request.amount_paise)}
               </Button>
             </div>
           </>

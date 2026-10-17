@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { ApiError, api } from "../api";
-import { Badge, Card, CardHeader, type Tone } from "../components/ui/card";
+import { Badge, Card, CardHeader, Skeleton, type Tone } from "../components/ui/card";
 import { Segmented } from "../components/ui/segmented";
 import type { AttackCaseResult, AttackResults, GateMode, SuiteMetrics, SuiteRun } from "../types";
 
@@ -68,7 +68,7 @@ function Bar({ label, value, hits, total, tone }: { label: string; value: number
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           />
         </div>
-        <span className={`font-display tabular w-24 text-right text-4xl font-black font-stretch-118% ${text}`}>
+        <span className={`font-display tabular w-24 text-right text-[40px] font-bold leading-none ${text}`}>
           {pct(value)}
         </span>
       </div>
@@ -100,13 +100,13 @@ function Headline({ m, cases }: { m: SuiteMetrics; cases: AttackCaseResult[] }) 
       </Card>
       <div className="flex flex-col gap-4">
         <Card>
-          <div className="text-sm font-semibold text-muted">Legit payments wrongly blocked</div>
-          <div className="font-display tabular my-1 text-5xl font-black text-ok font-stretch-118%">{pct(m.benign_fpr)}</div>
+          <div className="text-[14px] font-medium text-muted">Legit payments wrongly blocked</div>
+          <div className="font-display tabular my-1.5 text-[52px] font-bold leading-none text-ok">{pct(m.benign_fpr)}</div>
           <div className="text-sm text-muted">{benign.filter((r) => r.false_positive).length} of {benign.length} normal and over-the-limit runs, with MandateGate on.</div>
         </Card>
         <Card>
-          <div className="text-sm font-semibold text-muted">Agent fell for the attack</div>
-          <div className="font-display tabular my-1 text-5xl font-black text-ink font-stretch-118%">{pct(m.fooled_rate)}</div>
+          <div className="text-[14px] font-medium text-muted">Agent fell for the attack</div>
+          <div className="font-display tabular my-1.5 text-[52px] font-bold leading-none text-ink">{pct(m.fooled_rate)}</div>
           <div className="text-sm text-muted">
             {m.agent === "scripted"
               ? "By design: the simulated agent is scripted to trust the latest message, so every attack is really tested."
@@ -126,11 +126,11 @@ function CaseTable({ cases }: { cases: AttackCaseResult[] }) {
       <table className="w-full min-w-180 table-fixed text-[14px]">
         <colgroup><col className="w-16" /><col className="w-[34%]" /><col /><col /></colgroup>
         <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wider text-faint">
-            <th className="py-1.5 pr-3 font-semibold">Case</th>
-            <th className="pr-3 font-semibold">Attack</th>
-            <th className="pr-3 font-semibold">Without MandateGate</th>
-            <th className="font-semibold">With MandateGate</th>
+          <tr className="text-left text-[12px] text-faint">
+            <th className="py-1.5 pr-3 font-medium">Case</th>
+            <th className="pr-3 font-medium">Attack</th>
+            <th className="pr-3 font-medium">Without MandateGate</th>
+            <th className="font-medium">With MandateGate</th>
           </tr>
         </thead>
         <tbody>
@@ -210,7 +210,7 @@ function Results({ data }: { data: AttackResults }) {
             aside={<span className="text-xs text-muted">{m.agent === "llm" ? "3 runs per case, as measured" : "1 run per case (deterministic)"} · hover a result for details</span>}
           />
           <CaseTable cases={mine.filter((c) => c.kind === "attack")} />
-          <div className="mt-4 mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-faint">Benign controls: must still pay (or ask you)</div>
+          <div className="mt-5 mb-1 font-display text-[17px] font-semibold text-muted">Benign controls: must still pay (or ask you)</div>
           <CaseTable cases={mine.filter((c) => c.kind === "benign")} />
         </Card>
       )}
@@ -231,15 +231,20 @@ export default function Attacks() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-seal">Measurable results</div>
-        <h1 className="font-display text-3xl font-black">Every attack, with and without MandateGate</h1>
-        <p className="max-w-3xl text-muted">
+        <div className="text-[14px] font-semibold text-seal">Measurable results</div>
+        <h1 className="font-display text-[34px] font-bold leading-tight">Every attack, with and without MandateGate</h1>
+        <p className="mt-1 max-w-3xl text-muted">
           Each scam runs twice through the same agent and tools: once with ordinary access control only, once through MandateGate.
           The simulated agent always falls for the scam, so each attack is really tested. The real AI agent runs each case three
           times, and the page reports what actually happened.
         </p>
       </div>
-      {q.isPending && <p className="text-muted">Loading results…</p>}
+      {q.isPending && (
+        <div className="flex flex-col gap-4" aria-busy>
+          <div className="grid gap-4 lg:grid-cols-3"><Skeleton className="h-56 rounded-2xl lg:col-span-2" /><Skeleton className="h-56 rounded-2xl" /></div>
+          <Skeleton className="h-80 rounded-2xl" />
+        </div>
+      )}
       {missing && (
         <Card>
           <CardHeader title="No results yet" />

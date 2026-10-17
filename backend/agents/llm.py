@@ -16,8 +16,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-import anthropic
-
 MAX_STEPS = 12
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_EFFORT = "medium"  # Claude Opus 5.5's default; set explicitly so it is visible
@@ -85,6 +83,9 @@ class AnthropicConversation:
         self, *, system: str, user: str, tools: list[Tool], model: str = DEFAULT_MODEL,
         effort: str = DEFAULT_EFFORT, client: Any = None, max_tokens: int = 16000,
     ) -> None:
+        import anthropic  # here, not at module top: the SDK takes seconds to import on Windows, and the
+        # scripted and OpenAI-compatible runs never need it (it delayed every dashboard Run click)
+
         self.model, self.effort, self.system, self.max_tokens = model, effort, system, max_tokens
         self.client = client if client is not None else anthropic.Anthropic()
         # strict: tool inputs are guaranteed to match the schema (no forced tool_choice on Opus 5.5).
@@ -104,6 +105,8 @@ class AnthropicConversation:
         return self.client.messages.create(**params)
 
     def send(self) -> Turn:
+        import anthropic
+
         try:
             resp = self._create()
         except anthropic.AuthenticationError as e:
