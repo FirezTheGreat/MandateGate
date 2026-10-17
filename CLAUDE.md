@@ -114,7 +114,7 @@ and finds it only ever appeared in Email #1842 (untrusted). The agent cannot for
 | Crypto | stdlib `hmac`, `hashlib` (HMAC-SHA-256), `secrets` for nonces/keys |
 | Agents | Python, LLM via provider-pluggable `agents/llm.py` (Anthropic SDK default; OpenAI-compatible fallback) |
 | Live updates | Server-Sent Events (`sse-starlette`) |
-| Frontend | React + Vite + TypeScript, React Flow (`@xyflow/react`), Tailwind, plus modern motion/visual libraries chosen per effect (e.g. Motion (motion.dev), GSAP, Three.js), see §11 |
+| Frontend | React + Vite + TypeScript, Tailwind, React Flow (`@xyflow/react`), plus the frontend toolkit in §11 |
 | Tests | pytest, httpx `TestClient` |
 | Env/tooling | `uv` for Python deps, `npm` for frontend, `Makefile` for commands |
 
@@ -437,9 +437,26 @@ Main page `Live.tsx`, designed for a projector:
 - **Ledger**: payments that actually executed (the attacker row shows up in red in baseline mode).
 Second page `Attacks.tsx`: suite results table + two big numbers (baseline ASR vs gated ASR, FPR).
 
-Visual direction: a very aesthetic, modern site that is also fast and fully functional. Use whichever modern UI
-tools fit each effect; none is mandatory. For example, Motion (motion.dev) for UI and layout transitions, GSAP for
-orchestrated timelines (the verdict landing, provenance paths drawing in), Three.js only for a deliberate 3D/hero moment.
+Visual direction: a very aesthetic, modern site that is also fast and fully functional.
+
+Frontend toolkit (agreed; add others only if they clearly beat these for a specific job):
+| Job | Tool |
+|---|---|
+| Accessible UI primitives (ApprovalModal, tabs, ModeToggle, tooltips) | **shadcn/ui** (Radix), copied into `src/components/ui` |
+| UI motion (verdict stamp, checklist ticks, layout transitions) | **Motion** (motion.dev); **GSAP** only for long choreographed timelines |
+| Rows entering the EventFeed and Ledger | **AutoAnimate** |
+| Animated numbers on the Attacks page | **NumberFlow** (`@number-flow/react`) |
+| Charts on the Attacks page | **Recharts** (or **visx** for a custom look) |
+| Toasts ("Payment blocked: Email #1842") | **Sonner** |
+| Icons | **Lucide** (`lucide-react`) |
+| Fonts | **Fontsource**, bundled locally: no font CDN, so venue Wi-Fi cannot break the demo |
+| REST fetching, caching, polling | **TanStack Query** (SSE via native `EventSource` in `api.ts`) |
+| Client state (mode, scenario, live events) | **Zustand** |
+| Provenance graph | **React Flow** (installed) |
+| Optional signature visual | **React Three Fiber** (Three.js) for a lazy-loaded hero scene, or **Rive** for an animated seal; pick at most one |
+| Demo insurance | **Playwright**: scripted click-through of the full demo (Phase 5 acceptance), screenshots for slides and backup video |
+| Performance checks | **Lighthouse** + `rollup-plugin-visualizer` before the H18 freeze |
+
 Rules:
 - Function first: every animated element still works and reads correctly with motion off. Motion explains cause and
   effect (where a value came from, why something was blocked); it never delays or hides information.
