@@ -100,7 +100,7 @@ Open **http://localhost:5173**. Interactive API docs are at http://localhost:800
 | `make dev` | Start all three services (Ctrl+C stops all of them) |
 | `make gate` / `make pay` / `make web` | Start one service on its own |
 | `make test` | Run the backend test suite |
-| `make scenario S=hero_attack MODE=gated AGENT=llm` | Run a scenario end-to-end (`S`: `happy`, `hero_attack`, `step_up`; `MODE`: `gated`, `baseline`; `AGENT`: `llm`, `scripted`) |
+| `make scenario S=hero_attack MODE=gated AGENT=llm` | Run a scenario end-to-end (`S`: `happy`, `hero_attack`, `step_up`; `MODE`: `gated`, `baseline`; `AGENT`: `llm` (needs `ANTHROPIC_API_KEY` in `.env`) or `scripted` (no LLM); `STEP_UP`: `wait`, `approve`, `deny`) |
 | `make attacks` | Run the attack suite in baseline and gated mode and write `backend/attacks/results.{json,md}` |
 | `make reset` | Reset both services |
 
@@ -134,7 +134,7 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [x] **Phase 0**: scaffold, frozen data contracts, fixtures, stubbed API
 - [x] **Phase 1**: crypto, mandates, delegation tokens, one-time passes, real payment service
 - [x] **Phase 2**: tool broker, provenance tracking, decision engine, sessions, step-up approvals
-- [ ] Phase 3: agents (scripted + LLM), end-to-end scenarios
+- [x] **Phase 3**: agents (Claude-powered finance agent + scripted fallback), end-to-end scenarios. Still to do: tune the scam email against the live model
 - [ ] Phase 4: approvals, attack tracer, live events (SSE)
 - [ ] Phase 5: dashboard
 - [ ] Phase 6: attack suite and metrics
@@ -147,7 +147,7 @@ The gate is real end to end over HTTP. Every tool call goes through the broker, 
 - Legit payments went through.
 - The ₹5,200 invoice waited for human approval.
 
-The attack trace graph and the live event stream are still stubs (Phase 4), and the AI agents arrive in Phase 3.
+The agents are in place. A planner narrows the permission slip and hands the job to a Claude-powered accounts-payable agent, which works only through the gate's tools. There is also a scripted agent that does the same job without an LLM. The attack trace graph and the live event stream are still stubs (Phase 4).
 
 ## Repository layout
 

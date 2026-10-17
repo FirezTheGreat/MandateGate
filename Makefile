@@ -5,6 +5,7 @@
 S ?= hero_attack
 MODE ?= gated
 AGENT ?= llm
+STEP_UP ?= wait
 
 .PHONY: setup gate pay web dev test scenario attacks reset
 
@@ -30,7 +31,7 @@ test:
 	cd backend && uv run pytest tests -q
 
 scenario:
-	cd backend && uv run --env-file ../.env python -m agents.run_scenario --scenario $(S) --mode $(MODE) --agent $(AGENT)
+	cd backend && uv run --env-file ../.env python -m agents.run_scenario --scenario $(S) --mode $(MODE) --agent $(AGENT) --on-step-up $(STEP_UP)
 
 attacks:
 	cd backend && uv run --env-file ../.env python -m attacks.run_suite
