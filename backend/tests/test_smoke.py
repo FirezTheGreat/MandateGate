@@ -60,6 +60,31 @@ def test_old_gate_schema_is_rebuilt(tmp_path: Path) -> None:
     assert "limit_paise" in cols and "values" not in tables
 
 
+def test_a_connection_can_move_between_threads(tmp_path: Path) -> None:
+    """FastAPI may open a request's connection, run the endpoint and close it on different
+    worker threads. The live dashboard crashed the gate before this was allowed."""
+    import threading
+
+    from app.db import connect, init_gate_db
+
+    path = tmp_path / "gate.db"
+    init_gate_db(path)
+    conn = connect(path)
+    errors: list[BaseException] = []
+
+    def use() -> None:
+        try:
+            conn.execute("SELECT COUNT(*) FROM events").fetchone()
+        except BaseException as e:  # noqa: BLE001
+            errors.append(e)
+
+    t = threading.Thread(target=use)
+    t.start()
+    t.join()
+    conn.close()
+    assert errors == []
+
+
 def test_unknown_gate_mode_falls_back_to_gated(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GATE_MODE", "off")
     assert load_settings().gate_mode == "gated"

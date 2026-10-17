@@ -1,83 +1,35 @@
-// Wiring proof: renders the most recent real decision from GET /decisions.
-// Phase 5 replaces this with MandateBar, ProvenanceGraph, DecisionPanel, EventFeed, etc.
 import { useEffect, useState } from "react";
-import { listDecisions } from "../api";
-import type { CheckStatus, Decision, Outcome } from "../types";
-
-const BANNER: Record<Outcome, { text: string; className: string }> = {
-  ALLOW: { text: "ALLOWED", className: "bg-green-600" },
-  BLOCK: { text: "BLOCKED", className: "bg-red-600" },
-  STEP_UP: { text: "ASK YOU FIRST", className: "bg-amber-500" },
-};
-
-const MARK: Record<CheckStatus, { symbol: string; className: string }> = {
-  pass: { symbol: "✓", className: "text-green-600" },
-  fail: { symbol: "✗", className: "text-red-600" },
-  skipped: { symbol: "–", className: "text-slate-400" },
-};
+import { ApprovalModal } from "../components/ApprovalModal";
+import { ControlBar } from "../components/ControlBar";
+import { EventFeed } from "../components/EventFeed";
+import { Ledger } from "../components/Ledger";
+import { MandateBar } from "../components/MandateBar";
+import { ProvenanceGraph } from "../components/ProvenanceGraph";
+import { VerdictPanel } from "../components/VerdictPanel";
+import { latestDecision, useRunEvents } from "../store";
 
 export default function Live() {
-  const [decisions, setDecisions] = useState<Decision[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const latest = latestDecision(useRunEvents());
+  const pendingId = latest?.outcome === "STEP_UP" && latest.approval === "pending" ? latest.decisionId : null;
+  const [approvalOpen, setApprovalOpen] = useState(false);
 
   useEffect(() => {
-    const load = () =>
-      listDecisions()
-        .then((d) => {
-          setDecisions(d);
-          setError(null);
-        })
-        .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-    load();
-    const timer = window.setInterval(load, 2000); // Phase 4 replaces polling with SSE
-    return () => window.clearInterval(timer);
-  }, []);
+    if (pendingId) setApprovalOpen(true); // pop the modal as soon as the gate asks
+  }, [pendingId]);
 
-  if (error) {
-    return (
-      <div className="rounded border-2 border-red-600 bg-white p-4 text-red-700">
-        Could not reach the gate: {error}. Is <code>make dev</code> running?
-      </div>
-    );
-  }
-  if (!decisions) return <p className="text-slate-500">Loading decisions…</p>;
-  const decision = decisions[0];
-  if (!decision) {
-    return (
-      <p className="max-w-2xl text-slate-600">
-        No decisions yet. Run a scenario (<code>make scenario</code>, Phase 3) or submit a proposal to{" "}
-        <code>POST /proposals</code>, and the latest decision appears here.
-      </p>
-    );
-  }
-
-  const banner = BANNER[decision.outcome];
   return (
-    <section className="max-w-3xl space-y-4">
-      <div className={`rounded px-6 py-4 text-4xl font-black tracking-wide text-white ${banner.className}`}>
-        {banner.text}
+    <div className="flex flex-col gap-4">
+      <MandateBar />
+      <ControlBar />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+        <ProvenanceGraph />
+        <VerdictPanel onReview={() => setApprovalOpen(true)} />
       </div>
-      <p className="text-slate-600">
-        Decision <code>{decision.decision_id}</code> ({decision.mode} mode): pay{" "}
-        <b>{decision.proposal.payee_account}</b> ₹{(decision.proposal.amount_paise / 100).toLocaleString("en-IN")}{" "}
-        for {decision.proposal.invoice_id}
-      </p>
-      <ul className="divide-y rounded bg-white shadow">
-        {decision.checks.map((c) => (
-          <li key={c.check} className="flex gap-4 px-4 py-3">
-            <span className={`w-6 text-xl font-bold ${MARK[c.status].className}`}>{MARK[c.status].symbol}</span>
-            <div>
-              <div className="font-semibold">{c.check}</div>
-              {c.detail && <div className="text-slate-600">{c.detail}</div>}
-              {c.required && (
-                <div className="text-slate-700">
-                  Required: <b>{c.required}</b> · Found: <b className="text-red-700">{c.found?.join(", ") || "nothing"}</b>
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <EventFeed />
+        <Ledger />
+      </div>
+      <ApprovalModal open={approvalOpen} onOpenChange={setApprovalOpen} />
+    </div>
   );
 }

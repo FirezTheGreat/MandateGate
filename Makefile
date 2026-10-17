@@ -15,10 +15,10 @@ setup:
 	uv run --no-project python backend/scripts/init_env.py
 
 gate:
-	cd backend && uv run --env-file ../.env uvicorn app.main:app --port 8000 --reload --reload-dir app
+	cd backend && uv run --env-file ../.env uvicorn app.main:app --port 8000 --reload --reload-dir app --timeout-graceful-shutdown 2
 
 pay:
-	cd backend && uv run --env-file ../.env uvicorn payment_service.main:app --port 8001 --reload --reload-dir payment_service --reload-dir app
+	cd backend && uv run --env-file ../.env uvicorn payment_service.main:app --port 8001 --reload --reload-dir payment_service --reload-dir app --timeout-graceful-shutdown 2
 
 web:
 	cd frontend && npm run dev

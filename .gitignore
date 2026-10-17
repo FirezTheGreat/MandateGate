@@ -23,3 +23,8 @@ backend/data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Playwright
+frontend/e2e/screenshots/
+frontend/test-results/
+frontend/playwright-report/

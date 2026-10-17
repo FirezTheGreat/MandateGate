@@ -146,10 +146,13 @@ PAYMENT_TABLES = ("used_nonces", "ledger")
 
 
 def connect(path: Path) -> sqlite3.Connection:
-    """One connection per request/thread. Autocommit mode: multi-statement writes use
-    `transaction()` explicitly, so atomicity is visible in the code."""
+    """One connection per request. Autocommit mode: multi-statement writes use
+    `transaction()` explicitly, so atomicity is visible in the code.
+
+    check_same_thread=False: FastAPI may open, use and close a request's connection on
+    different worker threads. Safe because a connection is never shared between requests."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, isolation_level=None, timeout=10)
+    conn = sqlite3.connect(path, isolation_level=None, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=10000")

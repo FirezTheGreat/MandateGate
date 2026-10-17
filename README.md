@@ -136,7 +136,7 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [x] **Phase 2**: tool broker, provenance tracking, decision engine, sessions, step-up approvals
 - [x] **Phase 3**: agents (Claude-powered finance agent + scripted fallback), end-to-end scenarios. Still to do: tune the scam email against the live model
 - [x] **Phase 4**: attack tracer, live event stream, signed payment events
-- [ ] Phase 5: dashboard
+- [x] **Phase 5 (live page)**: the dashboard: live provenance graph, verdict, event feed, ledger, approvals (Attacks page fills in with Phase 6)
 - [ ] Phase 6: attack suite and metrics
 - [ ] Phase 7: hardening and demo assets
 
@@ -178,6 +178,7 @@ The gate runs on `:8000`. The full contract is in [`CLAUDE.md` §7](CLAUDE.md#7-
 |---|---|---|
 | POST | `/mandates`, `/delegate` | Create a mandate and its root token; attenuate a token |
 | POST | `/sessions` | Start one agent run, bound to one mandate |
+| POST | `/admin/run-scenario` | Start a scenario run from the dashboard (one at a time) |
 | GET / POST | `/tools`, `/tools/{name}` | List brokered tools; execute one through the broker |
 | POST | `/proposals` | Submit a payment proposal and get a Decision |
 | GET / POST | `/approvals`, `/approvals/{id}` | List pending step-ups; approve or deny one |

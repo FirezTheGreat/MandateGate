@@ -1,5 +1,93 @@
+/* Fonts are bundled (Fontsource): no font CDN, so venue Wi-Fi cannot break the demo. */
+@import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@xyflow/react/dist/style.css";
 @import "tailwindcss";
 
-html {
-  font-size: 18px; /* projector-readable baseline */
+/* Control room on a dark ground: deep navy (not black), high-contrast ink for projectors,
+   one accent (seal blue) and three semantic colours (ok / bad / warn). */
+@theme {
+  --color-bg: #0a0f1e;
+  --color-panel: #111a2e;
+  --color-panel-2: #16213a;
+  --color-line: #253150;
+  --color-ink: #eaf0fb;
+  --color-muted: #9ba7c5;
+  --color-faint: #6b7798;
+  --color-seal: #86a0ff;
+  --color-seal-ink: #0a0f1e;
+  --color-ok: #3fd294;
+  --color-bad: #ff6d64;
+  --color-warn: #f4b64e;
+  --color-band: #050915;
+
+  --font-display: "Archivo Variable", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-stretch: 112%;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-seal);
+  outline-offset: 2px;
+}
+
+/* React Flow: blend into the panel. */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--color-faint);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+.react-flow__edge-textbg {
+  fill: var(--color-panel);
+}
+.react-flow__edge-text {
+  fill: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge-path {
+    animation: none !important;
+  }
 }

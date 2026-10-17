@@ -2,6 +2,7 @@
 
 import sys
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,8 +18,9 @@ def fake_command(script: str):  # type: ignore[no-untyped-def]
     return lambda scenario, mode, agent: [sys.executable, "-c", script]
 
 
-def test_runner_returns_the_session_as_soon_as_the_run_creates_it() -> None:
-    runner = Runner(command=fake_command("import time; print('[human] approved', flush=True); print('[session] ses_test123', flush=True); time.sleep(1.5)"))
+def test_runner_returns_the_session_as_soon_as_the_run_creates_it(tmp_path: Path) -> None:
+    script = "import time; print('[human] approved', flush=True); print('[session] ses_test123', flush=True); print('later', flush=True); time.sleep(1.5)"
+    runner = Runner(command=fake_command(script), log_dir=tmp_path)
     t0 = time.monotonic()
     assert runner.start("hero_attack", "gated", "scripted") == "ses_test123"
     assert time.monotonic() - t0 < 1.5  # did not wait for the run to finish
@@ -28,17 +30,19 @@ def test_runner_returns_the_session_as_soon_as_the_run_creates_it() -> None:
     assert e.value.error == "run_in_progress"
     runner.process.wait(timeout=10)  # type: ignore[union-attr]
     assert not runner.busy()
+    time.sleep(0.2)  # let the pump flush the run's log
+    assert (tmp_path / "ses_test123.log").read_text(encoding="utf-8").strip() == "later"
 
 
-def test_runner_reports_a_run_that_dies_before_starting() -> None:
-    runner = Runner(command=fake_command("print('error: gate unreachable'); raise SystemExit(1)"))
+def test_runner_reports_a_run_that_dies_before_starting(tmp_path: Path) -> None:
+    runner = Runner(command=fake_command("print('error: gate unreachable'); raise SystemExit(1)"), log_dir=tmp_path)
     with pytest.raises(RunnerError) as e:
         runner.start("hero_attack", "gated", "scripted")
     assert e.value.error == "run_failed" and "gate unreachable" in e.value.detail
 
 
-def test_runner_times_out_when_no_session_appears() -> None:
-    runner = Runner(command=fake_command("import time; time.sleep(5)"), start_timeout_s=0.5)
+def test_runner_times_out_when_no_session_appears(tmp_path: Path) -> None:
+    runner = Runner(command=fake_command("import time; time.sleep(5)"), start_timeout_s=0.5, log_dir=tmp_path)
     with pytest.raises(RunnerError) as e:
         runner.start("hero_attack", "gated", "scripted")
     assert e.value.error == "run_failed"

@@ -342,6 +342,7 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | POST | `/delegate` | Attenuate a token with extra caveats |
 | GET | `/tools` | List brokered tools |
 | POST | `/sessions` | `{mandate_id, scenario?}` → `Session`. One agent run, bound to one mandate; `scenario` picks the demo inbox. Required before any tool call or proposal |
+| GET | `/sessions/{id}`, `/mandates/{id}` | Look up a session / the signed mandate (for the dashboard's MandateBar; never returns a token) |
 | POST | `/tools/{name}` | Execute tool via broker `{session_id, agent_id, token, args}` → result (provenance recorded). Errors: 404 `unknown_session`/`unknown_tool`/`not_found`, 401 `invalid_token`, 403 `session_mismatch`/`mandate_invalid`/`tool_denied`, 400 `invalid_args` (unknown arg keys are also logged as `suspicious_input`) |
 | POST | `/proposals` | Submit payment proposal → Decision |
 | GET | `/approvals` | Pending STEP_UPs |
@@ -352,7 +353,7 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment`. `?session_id=` filters, `?after=<seq>` replays (0 = all), `Last-Event-ID` resumes; default is live-only. Message: `event: <type>`, `id: <seq>`, `data: <Event JSON>` |
 | GET, POST | `/admin/mode` | Read / set `{mode: "gated" \| "baseline"}` |
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
-| POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent}`; spawns `agents.run_scenario` in a subprocess in the current mode. `scenario` must match `^[a-z0-9_]{1,64}$` |
+| POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent, agent_label}`; `app/runner.py` spawns `agents.run_scenario --on-step-up wait` in the current mode and returns once the run prints `[session] <id>`. One run at a time (409 `run_in_progress`); unknown scenario 404; run log in `backend/data/runs/<session>.log` |
 | GET | `/attacks/results` | `attacks/results.json` (`AttackResults`) for the Attacks page |
 | POST | `/internal/payment-event` | Payment service → gate: a `PaymentEventReport` (paid or refused), published as a `payment` event. Display only. Requires `X-MandateGate-Signature` = HMAC(PASS_KEY, canonical body) and `sent_at` within 60s, else 401 (`bad_signature` / `stale`) |
 
@@ -534,7 +535,7 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 - [x] Phase 2 — broker, provenance, policy, decisions, sessions, approvals (`make test` green: 279 tests)
 - [x] Phase 3 — agents (scripted + LLM), scenarios end-to-end (`make test` green: 328 tests; live LLM = Gemini via the OpenAI-compatible provider)
 - [x] Phase 4 — tracer, SSE, signed payment events (approvals were done in Phase 2) (`make test` green: 354 tests)
-- [ ] Phase 5 — dashboard
+- [~] Phase 5 — dashboard: Live page done and click-through-tested (`npm run e2e`, 4/4 with `make dev` up); Attacks page shows the test plan until Phase 6 numbers exist
 - [ ] Phase 6 — attack suite + metrics
 - [ ] Phase 7 — hardening, polish, demo assets
 
@@ -589,7 +590,25 @@ What works (Phase 2):
   email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
 
 Stubs (example data in `backend/app/stub_data.py`; delete pieces as real code lands):
-- `/admin/run-scenario` spawns nothing yet (Phase 5); `/attacks/results` returns example numbers (Phase 6).
+- `/attacks/results` returns example numbers (Phase 6); the Attacks page shows the expected-outcome test plan.
+
+What works (Phase 5, dashboard):
+- `frontend/src`: `api.ts` (REST + EventSource), `store.ts` (Zustand: watched run + live events), `hooks/useEventStream.ts`
+  (one SSE connection → store, TanStack Query invalidation, Sonner toasts), `lib/graph.ts` (live graph from events →
+  final trace, same node ids/columns as the backend tracer), components `MandateBar`, `ControlBar` (mode toggle, three
+  scenario cards labelled "Real AI agent" / "Simulated fooled agent", "Real AI for the scam" override, Reset demo),
+  `ProvenanceGraph` (React Flow, custom Motion nodes, heading nodes, red animated offending path), `VerdictPanel`
+  (stamp, six checks, Required ≠ Found, pass ticket, plain-language callout), `EventFeed` (AutoAnimate), `Ledger`
+  (attacker rows decided by the tracer's payee field status, not guessed), `ApprovalModal` (Radix dialog, pops on STEP_UP).
+- shadcn-style UI primitives in `src/components/ui` (Radix + CVA, written in-repo). Fonts bundled via Fontsource.
+  Dark "control room" theme in `index.css` `@theme` tokens. Attacks page is lazy-loaded.
+- `e2e/demo.spec.ts` (Playwright, 1366×768): baseline scam → attacker paid; gated scam → BLOCKED + email:1842; over the
+  limit with real Gemini → modal → approve → Rs. 5,200 paid; legit with real Gemini → paid. Screenshots in
+  `frontend/e2e/screenshots/` (gitignored) for slides.
+- Fixed while wiring it: SQLite connections now `check_same_thread=False` (FastAPI opens/uses/closes a request's
+  connection on different worker threads; the gate 500'd under dashboard load); Makefile uvicorn
+  `--timeout-graceful-shutdown 2` (an open SSE stream otherwise blocks `--reload` forever on Windows).
+- Not done yet: bundle split (main chunk ~230 KB gzip), Lighthouse pass, optional signature visual.
 
 What works (Phase 4):
 - `tracer.py` (pure; in the purity guard): `build_trace(decision, tool_calls, records)`. Matches values by normalized
