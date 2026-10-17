@@ -6,6 +6,8 @@ MandateGate is a deterministic security gateway that sits between AI agents and 
 
 > HackSprint (MAHE) · PS 31 · Cybersecurity & Web3 · Team **Sky High**
 
+![A scam email asked the agent to pay EVE-777. MandateGate blocked it and traced the payee to Email #1842 (untrusted).](docs/blocked-with-trace.png)
+
 ---
 
 ## The problem
@@ -40,17 +42,19 @@ Every proposal gets one of three outcomes:
 - **STEP_UP**: the payment is valid but over the authorised limit, so the human decides.
 
 ```mermaid
-flowchart TB
-    H["Human (dashboard :5173)"] -->|creates mandate, approves step-ups| G
+flowchart LR
+    H["Human<br/>(dashboard :5173)"] -->|"signs the mandate,<br/>approves step-ups"| B
     subgraph U["Untrusted zone"]
-        P["Planner agent (LLM)"] -->|attenuated token| F["Finance agent (LLM)"]
+        P["Planner<br/>(code, narrows the token)"] -->|"narrowed token"| F["Finance agent<br/>(LLM)"]
     end
-    F -->|"tool calls + payment proposal (HTTP)"| G
-    subgraph T["Trusted zone: MandateGate :8000"]
-        G["Broker → provenance store → policy engine"]
-        G --> D{"ALLOW / BLOCK / STEP_UP"}
+    F -->|"tool calls +<br/>payment proposal"| B
+    subgraph T["Trusted zone: MandateGate :8000 (no LLM)"]
+        S1[("Vendor registry<br/>Invoice DB<br/>trusted")] --> B
+        S2[("Inbox, web pages,<br/>invoice notes<br/>untrusted")] --> B
+        B["Broker<br/>records where every<br/>value came from"] --> E["Policy engine<br/>6 deterministic checks"]
+        E --> D{"ALLOW / BLOCK /<br/>STEP_UP"}
     end
-    D -->|one-time pass| PS["Payment service :8001<br/>verify pass → burn nonce → ledger"]
+    D -->|"one-time pass"| PS["Payment service :8001<br/>verify → burn nonce → pay"]
 ```
 
 ### The decision checklist
@@ -130,6 +134,8 @@ Gemini's free tier allows about 20 requests a day per model (one run uses 3 to 4
 Fixtures live in [`backend/fixtures/`](backend/fixtures/).
 
 ## Results
+
+![Attack suite page: 90% of attacks paid the attacker without MandateGate, 0% with it, and no legitimate payment was blocked.](docs/attack-suite.png)
 
 Measured by `make attacks LLM=1` on 2026-10-17: 21 cases, 113 runs, 0 errors. Full table: [`backend/attacks/results.md`](backend/attacks/results.md); the dashboard's **Attack suite** page shows the same file.
 

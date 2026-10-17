@@ -18,7 +18,7 @@ createRoot(root).render(
     <QueryClientProvider client={queryClient}>
       <MotionConfig reducedMotion="user">
         <App />
-        <Toaster theme="dark" position="bottom-right" richColors closeButton />
+        <Toaster theme="dark" position="top-right" richColors closeButton /> {/* top-right: never over the verdict or the graph */}
       </MotionConfig>
     </QueryClientProvider>
   </StrictMode>,
