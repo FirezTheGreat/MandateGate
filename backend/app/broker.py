@@ -2,6 +2,7 @@
 output recorded with provenance assigned HERE, from this registry (CLAUDE.md §2.2).
 
     list_inbox / read_email → email, untrusted
+    fetch_page              → web, untrusted
     get_invoice             → invoice_db, trusted   (except its free-text `notes`: untrusted, ref invoice:<id>#notes)
     get_vendor              → vendor_registry, trusted
 
@@ -61,26 +62,30 @@ class VendorArgs(_Args):
 
 # --------------------------------------------------------------------------- handlers (pure)
 
+class UrlArgs(_Args):
+    url: str = Field(pattern=r"^https?://\S{1,200}$")
+
+
 ToolOutput = tuple[Any, list[Fragment]]
-Handler = Callable[[Fixtures, list[str], Any], ToolOutput | None]  # None → not found
+Handler = Callable[[Fixtures, str | None, Any], ToolOutput | None]  # (fixtures, session scenario, args); None → not found
 
 SUMMARY_FIELDS = ("email_id", "from", "from_name", "subject", "received_at")
 
 
-def _list_inbox(fx: Fixtures, inbox: list[str], _: NoArgs) -> ToolOutput:
-    items = [{k: fx.emails[i][k] for k in SUMMARY_FIELDS} for i in inbox]
+def _list_inbox(fx: Fixtures, scenario: str | None, _: NoArgs) -> ToolOutput:
+    items = [{k: fx.emails[i][k] for k in SUMMARY_FIELDS} for i in fx.inbox(scenario)]
     return items, [Fragment(item, f"[{n}]", "email", f"email:{item['email_id']}", "untrusted") for n, item in enumerate(items)]
 
 
-def _read_email(fx: Fixtures, inbox: list[str], a: EmailArgs) -> ToolOutput | None:
-    if a.email_id not in inbox:
+def _read_email(fx: Fixtures, scenario: str | None, a: EmailArgs) -> ToolOutput | None:
+    if a.email_id not in fx.inbox(scenario):
         return None
     email = copy.deepcopy(fx.emails[a.email_id])
     return email, [Fragment(email, "", "email", f"email:{email['email_id']}", "untrusted")]
 
 
-def _get_invoice(fx: Fixtures, _: list[str], a: InvoiceArgs) -> ToolOutput | None:
-    inv = fx.invoices.get(a.invoice_id)
+def _get_invoice(fx: Fixtures, scenario: str | None, a: InvoiceArgs) -> ToolOutput | None:
+    inv = fx.invoice(a.invoice_id, scenario)  # scenario may have poisoned the free-text notes
     if inv is None:
         return None
     inv = copy.deepcopy(inv)
@@ -93,12 +98,20 @@ def _get_invoice(fx: Fixtures, _: list[str], a: InvoiceArgs) -> ToolOutput | Non
     return inv, fragments
 
 
-def _get_vendor(fx: Fixtures, _: list[str], a: VendorArgs) -> ToolOutput | None:
+def _get_vendor(fx: Fixtures, _: str | None, a: VendorArgs) -> ToolOutput | None:
     vendor = fx.vendors.get(a.vendor_id)
     if vendor is None:
         return None
     vendor = copy.deepcopy(vendor)
     return vendor, [Fragment(vendor, "", "vendor_registry", f"vendor:{vendor['vendor_id']}", "trusted")]
+
+
+def _fetch_page(fx: Fixtures, scenario: str | None, a: UrlArgs) -> ToolOutput | None:
+    page = next((p for p in fx.pages(scenario) if p["url"] == a.url), None)
+    if page is None:
+        return None
+    page = copy.deepcopy(page)
+    return page, [Fragment(page, "", "web", f"web:{page['page_id']}", "untrusted")]
 
 
 @dataclass(frozen=True)
@@ -117,6 +130,7 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("read_email", "Read one email by id.", EmailArgs, "email", _read_email),
         ToolSpec("get_invoice", "Fetch an invoice from the invoice database.", InvoiceArgs, "invoice_db", _get_invoice),
         ToolSpec("get_vendor", "Fetch a vendor record, including registered bank details, from the vendor registry.", VendorArgs, "vendor_registry", _get_vendor),
+        ToolSpec("fetch_page", "Fetch a web page (e.g. a vendor portal) by URL.", UrlArgs, "web", _fetch_page),
     )
 }
 
@@ -196,7 +210,7 @@ def execute(
     if not held.ok:
         raise deny(403, "tool_denied", held.detail, args=args)
 
-    output = spec.handler(fixtures, fixtures.inbox(session.scenario), parsed)
+    output = spec.handler(fixtures, session.scenario, parsed)
     if output is None:
         raise deny(404, "not_found", f"{name}: no record for {args}", args=args, record_status="error")
     result, fragments = output

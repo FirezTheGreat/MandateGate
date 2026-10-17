@@ -83,7 +83,7 @@ def root_caveats(max_amount_paise: int) -> list[str]:
     """Caveats on the root token minted with every mandate."""
     return [
         "agent in planner,finance",
-        "tool in list_inbox,read_email,get_invoice,get_vendor,propose_payment",
+        "tool in list_inbox,read_email,get_invoice,get_vendor,fetch_page,propose_payment",
         f"max_amount_paise <= {max_amount_paise}",
     ]
 

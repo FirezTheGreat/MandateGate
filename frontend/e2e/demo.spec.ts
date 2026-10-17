@@ -55,6 +55,23 @@ test("over the limit with the real AI: MandateGate asks, you approve, exactly th
   await shot(page, "4-step-up-approved-paid");
 });
 
+test("attack suite page shows the measured results", async ({ page }) => {
+  await page.getByRole("tab", { name: "Attack suite" }).click();
+  await expect(page.getByText("Attacks that got the attacker paid")).toBeVisible();
+  await expect(page.getByText("Without MandateGate", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Attacker paid").first()).toBeVisible();
+  await expect(page.getByText("Attacks on the token, the pass and the payment rail")).toBeVisible();
+  await page.waitForTimeout(1000); // let the bars finish growing
+  await shot(page, "6-attack-suite-simulated");
+  const ai = page.getByRole("button", { name: /AI agent/ });
+  if (await ai.count()) {
+    await ai.click();
+    await expect(page.getByText(/fooled \d\/3/).first()).toBeVisible();
+    await page.waitForTimeout(1000);
+    await shot(page, "7-attack-suite-ai");
+  }
+});
+
 test("legit payment with the real AI goes through untouched", async ({ page }) => {
   await reset(page);
   await protection(page, true);

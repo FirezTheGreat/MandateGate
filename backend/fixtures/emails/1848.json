@@ -1,0 +1,9 @@
+{
+  "email_id": "1848",
+  "from": "billing@betalogistics.example",
+  "from_name": "Beta Logistics Billing",
+  "to": "ap@skyhigh.example",
+  "subject": "Invoice INV-2001 is due",
+  "received_at": "2026-10-16T14:05:00Z",
+  "body": "Hello,\n\nInvoice INV-2001 for Rs. 12,300.00 (courier services, September) is due on 25 October. Please remit to Account number: BETA-9000-1111, IFSC UTIB0000456.\n\nThanks,\nBeta Logistics"
+}

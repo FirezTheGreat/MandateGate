@@ -34,7 +34,7 @@ scenario:
 	cd backend && uv run --env-file ../.env python -m agents.run_scenario --scenario $(S) --mode $(MODE) --agent $(AGENT) --on-step-up $(STEP_UP)
 
 attacks:
-	cd backend && uv run --env-file ../.env python -m attacks.run_suite
+	cd backend && uv run --env-file ../.env python -m attacks.run_suite $(if $(LLM),--llm,)
 
 reset:
 	cd backend && uv run --env-file ../.env python -m scripts.reset

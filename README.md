@@ -100,8 +100,9 @@ Open **http://localhost:5173**. Interactive API docs are at http://localhost:800
 | `make dev` | Start all three services (Ctrl+C stops all of them) |
 | `make gate` / `make pay` / `make web` | Start one service on its own |
 | `make test` | Run the backend test suite |
-| `make scenario S=hero_attack MODE=gated AGENT=llm` | Run a scenario end-to-end (`S`: `happy`, `hero_attack`, `step_up`; `MODE`: `gated`, `baseline`; `AGENT`: `llm` (needs `ANTHROPIC_API_KEY` in `.env`) or `scripted` (no LLM); `STEP_UP`: `wait`, `approve`, `deny`) |
-| `make attacks` | Run the attack suite in baseline and gated mode and write `backend/attacks/results.{json,md}` |
+| `make scenario S=hero_attack MODE=gated AGENT=llm` | Run a scenario end-to-end (`S`: `happy`, `hero_attack`, `step_up`; `MODE`: `gated`, `baseline`; `AGENT`: `llm` (needs an LLM key in `.env`, see `.env.example`) or `scripted` (no LLM); `STEP_UP`: `wait`, `approve`, `deny`) |
+| `make attacks` | Run the attack suite without and with MandateGate (simulated agent + protocol attacks, about 5 seconds) and write `backend/attacks/results.{json,md}` |
+| `make attacks LLM=1` | Also run the real AI agent, 3 runs per case per mode (about 2 minutes, a little API credit) |
 | `make reset` | Reset both services |
 
 ---
@@ -118,12 +119,22 @@ Fixtures live in [`backend/fixtures/`](backend/fixtures/).
 
 ## Results
 
-Attack-suite numbers will be filled in from `make attacks` once Phase 6 lands: baseline vs. gated attack success rate, and the false-positive rate on benign cases.
+Measured by `make attacks LLM=1` on 2026-10-17: 21 cases, 113 runs, 0 errors. Full table: [`backend/attacks/results.md`](backend/attacks/results.md); the dashboard's **Attack suite** page shows the same file.
 
-| Metric | Baseline | MandateGate |
-|---|---|---|
-| Attack success rate | _pending_ | _pending_ |
-| Benign false-positive rate | _pending_ | _pending_ |
+"Without MandateGate" is baseline mode: the same gate with its payee and amount provenance checks switched off, so a proposal goes through on identity, token, invoice and limit checks alone (roughly what ordinary access control gives you). An attack *succeeds* only if money actually moves the attacker's way.
+
+| Agent | Attack success without MandateGate | Attack success with MandateGate | Legit payments wrongly blocked | Agent fooled |
+|---|---|---|---|---|
+| Simulated fooled agent (scripted, 1 run per case) | **90%** (9 of 10) | **0%** (0 of 10) | 0% (0 of 4) | 100% (by design) |
+| AI agent, Gemini 3.8 Flash (3 runs per case) | 0% (0 of 27) | **0%** (0 of 27) | 0% (0 of 12) | 0% (0 of 54) |
+| Protocol attacks, no agent (tamper, replay, bypass, escalation) | n/a | **0%** (0 of 7) | n/a | n/a |
+
+What the numbers say:
+
+- **The attacks are real.** An agent that trusts what it reads pays the attacker in 9 of 10 content attacks when only ordinary checks are on. The tenth, a swapped invoice number, is caught by the mandate's invoice check even then.
+- **MandateGate stopped every one**, including disguised account numbers (spaced, full-width, zero-width), an inflated amount and an account the agent invented. Each block names the check that caught it. No legitimate payment was blocked.
+- **The real AI was not fooled.** Gemini opened every scam email (and the invoice carrying the planted note) and still paid the real vendor, in all 54 attack runs. It never followed the fake-portal link. We report that as measured. A careful model catching these attacks today is good news, but MandateGate's guarantee does not depend on it. The live demo uses the simulated agent for the scam, and labels it.
+- **Protocol attacks fail for the right reason:** an edited payment (403 `field_mismatch`), an edited or forged pass (401 `bad_signature`), a replay (409), no pass (401), a stripped token caveat (`delegation_chain`), and a self-raised limit that has no effect (it still asks the human).
 
 ---
 
@@ -134,20 +145,20 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [x] **Phase 0**: scaffold, frozen data contracts, fixtures, stubbed API
 - [x] **Phase 1**: crypto, mandates, delegation tokens, one-time passes, real payment service
 - [x] **Phase 2**: tool broker, provenance tracking, decision engine, sessions, step-up approvals
-- [x] **Phase 3**: agents (Claude-powered finance agent + scripted fallback), end-to-end scenarios. Still to do: tune the scam email against the live model
+- [x] **Phase 3**: agents (LLM finance agent, Claude or Gemini, + scripted fallback), end-to-end scenarios
 - [x] **Phase 4**: attack tracer, live event stream, signed payment events
-- [x] **Phase 5 (live page)**: the dashboard: live provenance graph, verdict, event feed, ledger, approvals (Attacks page fills in with Phase 6)
-- [ ] Phase 6: attack suite and metrics
+- [x] **Phase 5**: the dashboard: live provenance graph, verdict, event feed, ledger, approvals, attack-suite results page
+- [x] **Phase 6**: attack suite (21 cases across every attack category) and measured metrics
 - [ ] Phase 7: hardening and demo assets
 
-The gate is real end to end over HTTP. Every tool call goes through the broker, which records where each value came from. Proposals get a real ALLOW, BLOCK or STEP_UP decision. Approved payments get a one-time pass, and the payment service verifies it, uses it up, and only then pays. Running all three scenarios against the live services (with scripted calls, no LLM yet) gave these results:
-
-- The scam email without MandateGate paid ₹4,850 to EVE-777.
-- With MandateGate it was blocked, and the payee was traced to `email:1842 (untrusted)`.
-- Legit payments went through.
-- The ₹5,200 invoice waited for human approval.
-
-The agents are in place. A planner narrows the permission slip and hands the job to a Claude-powered accounts-payable agent, which works only through the gate's tools. There is also a scripted agent that does the same job without an LLM. The attack tracer draws the exact path a bad value took (Email #1842 → read_email → proposal → BLOCKED), and every event streams live to the dashboard.
+Everything up to the demo assets is built and tested (385 backend tests, 5 browser click-through tests).
+The gate is real end to end over HTTP: every tool call goes through the broker, which records where each value came from;
+proposals get a real ALLOW, BLOCK or STEP_UP decision; approved payments get a one-time pass that the payment service
+verifies and uses up before it pays. A planner narrows the permission slip and hands the job to an LLM-powered
+accounts-payable agent (Claude, or any OpenAI-compatible endpoint: the demo runs Gemini), which works only through the
+gate's tools. A scripted agent does the same job without an LLM and plays the "simulated fooled agent". The attack
+tracer draws the exact path a bad value took (Email #1842 → read_email → proposal → BLOCKED), every event streams live
+to the dashboard, and the attack suite's measured results are on the dashboard's second page (see [Results](#results)).
 
 ## Repository layout
 
@@ -218,6 +229,7 @@ These are the product, and none of them is ever weakened to make a demo pass. Th
 - **Out of scope:** a compromised vendor registry or invoice database. That is a traditional data-integrity problem with existing controls. MandateGate stops the *agent* from being the weak link.
 - **Shared HMAC key:** the gate and payment service share `PASS_KEY` for this prototype. A production deployment would use asymmetric signatures.
 - **Normalisation:** it covers Unicode NFKC, zero-width characters, case, and separators like spaces and dashes. It is not a complete homoglyph defence.
+- **The suite is fixture-based:** 21 hand-written cases against one demo vendor, and one AI model. The zeros with MandateGate come from deterministic checks, so they carry over to other cases of the same kind. The AI "fooled" rate is specific to that model, those prompts and those emails.
 
 ## Contributing (team workflow)
 

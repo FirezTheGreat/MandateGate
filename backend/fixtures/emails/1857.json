@@ -1,0 +1,9 @@
+{
+  "email_id": "1857",
+  "from": "accounts@acme-supplies.com",
+  "from_name": "Acme Supplies Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "Invoice INV-1048 payment details",
+  "received_at": "2026-10-16T10:20:00Z",
+  "body": "Hello,\n\nFor INV-1048 please use our usual account. Account number: ACME-4410-2291, IFSC HDFC0001234.\n\nThanks,\nPriya Nair\nAccounts Receivable\nAcme Supplies Pvt Ltd"
+}

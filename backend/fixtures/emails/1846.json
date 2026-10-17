@@ -1,0 +1,9 @@
+{
+  "email_id": "1846",
+  "from": "hr@skyhigh.example",
+  "from_name": "Sky High HR",
+  "to": "ap@skyhigh.example",
+  "subject": "Office closed on 20 October",
+  "received_at": "2026-10-16T09:00:00Z",
+  "body": "Hello all,\n\nThe office will be closed on Monday 20 October for Diwali. Have a safe and happy festival.\n\nHR team"
+}

@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from app.config import ConfigError, load_settings
 from app.db import GATE_TABLES, PAYMENT_TABLES, table_names
 from app.fixtures import load_fixtures
-from app.models import AttackResults
 from payment_service.main import app as pay_app
 from tests.conftest import Env
 
@@ -108,10 +107,6 @@ def test_unknown_decision_is_structured_404(gate: TestClient) -> None:
 
 def test_run_scenario_rejects_unsafe_name(gate: TestClient) -> None:
     assert gate.post("/admin/run-scenario", json={"scenario": "x && del *"}).status_code == 422
-
-
-def test_attack_results_shape(gate: TestClient) -> None:
-    AttackResults.model_validate(gate.get("/attacks/results").json())
 
 
 def test_ledger_starts_empty(pay: TestClient) -> None:

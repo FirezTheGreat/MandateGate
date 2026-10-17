@@ -42,6 +42,11 @@ TOOLS = [
         _object({"vendor_id": {"type": "string", "description": "The vendor's id, for example acme."}}),
     ),
     Tool(
+        "fetch_page",
+        "Fetch a web page, for example a vendor portal, by its URL.",
+        _object({"url": {"type": "string", "description": "The full https:// address."}}),
+    ),
+    Tool(
         "propose_payment",
         "Submit one payment for approval and execution. Call it once, when you are confident in the details.",
         _object({

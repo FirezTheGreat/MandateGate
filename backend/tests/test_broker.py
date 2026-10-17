@@ -32,7 +32,7 @@ def values(env: Env, sid: str):  # type: ignore[no-untyped-def]
 
 def test_tools_list_with_sources(gate: TestClient) -> None:
     tools = {t["name"]: t for t in gate.get("/tools").json()}
-    assert set(tools) == {"list_inbox", "read_email", "get_invoice", "get_vendor"}
+    assert set(tools) == {"list_inbox", "read_email", "get_invoice", "get_vendor", "fetch_page"}
     assert tools["read_email"]["source_type"] == "email"
     assert tools["get_vendor"]["source_type"] == "vendor_registry"
     assert tools["read_email"]["args"] == {"email_id": "string"}
@@ -68,6 +68,41 @@ def test_invoice_notes_are_untrusted_even_from_the_invoice_db(kit: GateKit, env:
     assert [(v.raw, v.source_ref, v.trust) for v in amount] == [("485000", "invoice:INV-1048", "trusted")]
     notes = [v for v in vs if v.field_hint.startswith("notes")]
     assert notes and all(v.source_ref == "invoice:INV-1048#notes" and v.trust == "untrusted" for v in notes)
+
+
+def test_scenario_invoice_notes_are_untrusted(kit: GateKit, env: Env) -> None:
+    """A01-style bank change hidden in the invoice's notes (A02): the invoice DB is trusted, its notes are not."""
+    sid, tok = kit.start(scenario="note_injection")
+    r = kit.tool(sid, tok, "get_invoice", invoice_id="INV-1048")
+    assert "EVE-777" in r.json()["result"]["notes"]
+    vs = values(env, sid)
+    eve = [v for v in vs if v.normalized == "EVE777"]
+    assert eve and all(v.source_ref == "invoice:INV-1048#notes" and v.trust == "untrusted" for v in eve)
+    assert [(v.raw, v.trust) for v in vs if v.field_hint == "amount_due_paise"] == [("485000", "trusted")]
+
+
+PORTAL = "https://portal.acme-supp1ies.example/remittance"
+
+
+def test_fetch_page_records_the_page_as_untrusted_web(kit: GateKit, env: Env) -> None:
+    sid, tok = kit.start(scenario="portal_redirect")
+    r = kit.tool(sid, tok, "fetch_page", url=PORTAL)
+    assert r.status_code == 200 and "EVE-777" in r.json()["result"]["body"]
+    eve = [v for v in values(env, sid) if v.normalized == "EVE777"]
+    assert eve and all((v.source_type, v.source_ref, v.trust) == ("web", "web:acme_portal", "untrusted") for v in eve)
+
+
+def test_fetch_page_is_scoped_to_the_scenario(kit: GateKit) -> None:
+    sid, tok = kit.start(scenario="happy")
+    r = kit.tool(sid, tok, "fetch_page", url=PORTAL)
+    assert (r.status_code, r.json()["error"]) == (404, "not_found")
+
+
+@pytest.mark.parametrize("url", ["file:///etc/passwd", "portal.acme-supp1ies.example", "https://a b"])
+def test_fetch_page_only_takes_http_urls(kit: GateKit, url: str) -> None:
+    sid, tok = kit.start(scenario="portal_redirect")
+    r = kit.tool(sid, tok, "fetch_page", url=url)
+    assert (r.status_code, r.json()["error"]) == (400, "invalid_args")
 
 
 def test_inbox_is_scoped_to_the_scenario(kit: GateKit) -> None:

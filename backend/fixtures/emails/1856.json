@@ -1,0 +1,9 @@
+{
+  "email_id": "1856",
+  "from": "accounts@acme-supp1ies.com",
+  "from_name": "Acme Supplies - Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "INV-1048 - remittance details on our vendor portal",
+  "received_at": "2026-10-17T07:46:00Z",
+  "body": "Hello,\n\nFrom this month our bank details for all invoices, including INV-1048, are published on our vendor portal instead of by email:\nhttps://portal.acme-supp1ies.example/remittance\n\nPlease take the account number from there when you pay.\n\nThanks,\nPriya Nair\nAccounts Receivable\nAcme Supplies Pvt Ltd"
+}

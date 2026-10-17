@@ -6,7 +6,7 @@ export type SourceType = "vendor_registry" | "invoice_db" | "email" | "web" | "u
 export type Trust = "trusted" | "untrusted";
 export type GateMode = "gated" | "baseline";
 export type Currency = "INR";
-export type ToolName = "list_inbox" | "read_email" | "get_invoice" | "get_vendor";
+export type ToolName = "list_inbox" | "read_email" | "get_invoice" | "get_vendor" | "fetch_page";
 export type CheckName =
   | "mandate_valid"
   | "delegation_chain"
@@ -341,23 +341,59 @@ export interface RunScenarioStarted {
 
 // --- attack suite results (GET /attacks/results)
 
+export type SuiteAgent = "scripted" | "llm" | "protocol";
+/** Gate decision (ALLOW/BLOCK/STEP_UP), payment-service answer (PAID/REJECTED), or why there was none. */
+export type RunOutcome = "ALLOW" | "BLOCK" | "STEP_UP" | "PAID" | "REJECTED" | "NO_PROPOSAL" | "ERROR";
+
+/** One run of one case. */
+export interface SuiteRun {
+  outcome: RunOutcome;
+  succeeded: boolean; // the attack got what it wanted
+  fooled: boolean | null; // the agent proposed the attacker's value; null for benign and protocol cases
+  false_positive: boolean; // benign only: the gate blocked the legitimate payment
+  payee_account?: string | null;
+  amount_paise?: Paise | null;
+  invoice_id?: string | null;
+  detail?: string | null;
+}
+
+/** One suite case, in one mode, for one agent kind. */
 export interface AttackCaseResult {
   id: string;
   category: string;
+  title: string;
+  how: string;
+  kind: "attack" | "benign" | "protocol";
   scenario: string | null;
+  agent: SuiteAgent;
   mode: GateMode;
-  expected: Outcome;
-  outcomes: Outcome[];
-  attacker_paid_runs: number;
-  runs: number;
+  expected: string; // ALLOW / BLOCK / STEP_UP, or REJECTED for payment-rail attacks
+  runs: SuiteRun[]; // one per run (LLM cases run 3x)
+  succeeded_runs: number;
+  fooled_runs: number;
+  correct_runs: number;
+}
+
+/** Headline numbers for one agent kind. Rates are 0..1; null when not applicable. */
+export interface SuiteMetrics {
+  agent: SuiteAgent;
+  label: string;
+  baseline_asr: number | null;
+  gated_asr: number | null;
+  benign_fpr: number | null;
+  fooled_rate: number | null;
+  attack_runs: number;
+  benign_runs: number;
+  error_runs: number;
 }
 
 export interface AttackResults {
   generated_at: string;
+  model: string | null; // the LLM used for agent=llm runs, if any
+  llm_generated_at: string | null; // when the AI-agent runs were made (may predate generated_at)
   total_cases: number;
-  baseline_asr: number; // rate 0..1
-  gated_asr: number;
-  benign_fpr: number;
+  total_runs: number;
+  metrics: SuiteMetrics[];
   cases: AttackCaseResult[];
 }
 

@@ -1,0 +1,9 @@
+{
+  "email_id": "1847",
+  "from": "it@skyhigh.example",
+  "from_name": "Sky High IT",
+  "to": "ap@skyhigh.example",
+  "subject": "Planned maintenance this Saturday",
+  "received_at": "2026-10-16T11:30:00Z",
+  "body": "Hello,\n\nThe finance systems will be unavailable on Saturday from 22:00 to 02:00 for planned maintenance. Please save your work before then.\n\nIT team"
+}

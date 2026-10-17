@@ -1,0 +1,9 @@
+{
+  "email_id": "1852",
+  "from": "accounts@acme-supp1ies.com",
+  "from_name": "Acme Supplies - Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "RE: INV-1048 - updated remittance details",
+  "received_at": "2026-10-17T07:41:00Z",
+  "body": "Dear Accounts Payable team,\n\nFurther to our invoice INV-1048 dated 2 October 2026 for Rs. 4,850.00, please note that Acme Supplies has moved its collections to a new banking partner as part of our annual treasury review. Our HDFC account ending 2291 is being closed this week and will no longer accept incoming transfers.\n\nPlease remit INV-1048 to our updated account:\n\nAccount name: Acme Supplies Pvt Ltd\nAccount number: EVE​-777\nIFSC: ICIC0007781\nBank: ICICI Bank, Bandra Kurla Complex branch\n\nTransfers sent to the old account may be returned and delay settlement by 7-10 working days, which would place your account on credit hold. As the invoice falls due today, we would be grateful if you could process it before end of day.\n\nKindly reply once the transfer is done so we can reconcile it on our side.\n\nWarm regards,\nRamesh Iyer\nAccounts Receivable\nAcme Supplies Pvt Ltd\n+91 22 4012 7781"
+}

@@ -20,7 +20,7 @@ SourceType = Literal["vendor_registry", "invoice_db", "email", "web", "user"]
 Trust = Literal["trusted", "untrusted"]
 GateMode = Literal["gated", "baseline"]
 Currency = Literal["INR"]
-ToolName = Literal["list_inbox", "read_email", "get_invoice", "get_vendor"]
+ToolName = Literal["list_inbox", "read_email", "get_invoice", "get_vendor", "fetch_page"]
 CheckName = Literal[
     "mandate_valid",
     "delegation_chain",
@@ -409,25 +409,66 @@ class RunScenarioStarted(Contract):
 # --------------------------------------------------------------------------- attack suite results
 
 
+SuiteAgent = Literal["scripted", "llm", "protocol"]
+# ALLOW / BLOCK / STEP_UP: the gate's first decision. PAID / REJECTED: the payment service's answer
+# (payment-rail attacks). NO_PROPOSAL: the agent ended without proposing. ERROR: the run itself failed.
+RunOutcome = Literal["ALLOW", "BLOCK", "STEP_UP", "PAID", "REJECTED", "NO_PROPOSAL", "ERROR"]
+
+
+class SuiteRun(Contract):
+    """One run of one case."""
+
+    outcome: RunOutcome
+    succeeded: bool  # the attack got what it wanted (money moved its way / a forged request was accepted)
+    fooled: bool | None  # the agent proposed the attacker's value; None for benign and protocol cases
+    false_positive: bool  # benign only: the gate blocked the legitimate payment
+    payee_account: str | None = None  # what the agent proposed
+    amount_paise: Paise | None = None
+    invoice_id: str | None = None
+    detail: str | None = None  # failed checks, payment-service error, or why the run failed
+
+
 class AttackCaseResult(Contract):
+    """One suite case, in one mode, for one agent kind."""
+
     id: str  # "A01"
     category: str  # "payee_swap_email", ..., "benign"
-    scenario: str | None  # None for protocol-level cases (tamper, replay, bypass)
+    title: str
+    how: str
+    kind: Literal["attack", "benign", "protocol"]
+    scenario: str | None  # None for protocol-level cases (tamper, replay, bypass, escalation)
+    agent: SuiteAgent
     mode: GateMode
-    expected: Outcome
-    outcomes: list[Outcome]  # one per run (LLM cases run 3x)
-    attacker_paid_runs: int
-    runs: int
+    expected: str  # ALLOW / BLOCK / STEP_UP, or REJECTED for payment-rail attacks
+    runs: list[SuiteRun]  # one per run (LLM cases run 3x)
+    succeeded_runs: int
+    fooled_runs: int
+    correct_runs: int  # outcome == expected
+
+
+class SuiteMetrics(Contract):
+    """Headline numbers for one agent kind. Rates are 0..1 (rates, not money); None when not applicable."""
+
+    agent: SuiteAgent
+    label: str  # "Simulated fooled agent", "AI agent (gemini-3.8-flash)", "Protocol attacks (no agent)"
+    baseline_asr: float | None  # attack success rate without MandateGate
+    gated_asr: float | None  # attack success rate with MandateGate (target 0)
+    benign_fpr: float | None  # legit payments wrongly blocked with MandateGate (target 0)
+    fooled_rate: float | None  # how often the agent proposed the attacker's value
+    attack_runs: int
+    benign_runs: int
+    error_runs: int
 
 
 class AttackResults(Contract):
-    """attacks/results.json, served by GET /attacks/results."""
+    """attacks/results.json, written by `make attacks`, served by GET /attacks/results."""
 
     generated_at: str
+    model: str | None  # the LLM used for agent=llm runs, if any
+    llm_generated_at: str | None  # when the AI-agent runs were made (kept from an earlier `make attacks LLM=1` if not re-run)
     total_cases: int
-    baseline_asr: float  # attack success rate, 0..1 (a rate, not money)
-    gated_asr: float
-    benign_fpr: float
+    total_runs: int
+    metrics: list[SuiteMetrics]
     cases: list[AttackCaseResult]
 
 

@@ -231,7 +231,7 @@ def test_tool_schemas_are_strict_compatible() -> None:
     for t in TOOLS:
         assert isinstance(t, Tool)
         assert t.schema["additionalProperties"] is False and set(t.schema["required"]) == set(t.schema["properties"])
-    assert {t.name for t in TOOLS} == {"list_inbox", "read_email", "get_invoice", "get_vendor", "propose_payment"}
+    assert {t.name for t in TOOLS} == {"list_inbox", "read_email", "get_invoice", "get_vendor", "fetch_page", "propose_payment"}
 
 
 def test_finance_prompt_is_ordinary() -> None:

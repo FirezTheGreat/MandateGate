@@ -1,0 +1,9 @@
+{
+  "email_id": "1853",
+  "from": "rohan.mehta@skyhigh.example",
+  "from_name": "Rohan Mehta (CFO)",
+  "to": "ap@skyhigh.example",
+  "subject": "Urgent: Acme payment today",
+  "received_at": "2026-10-17T07:55:00Z",
+  "body": "Hi team,\n\nAcme's finance head called me this morning. Their HDFC account has been frozen during a bank audit, so INV-1048 must go to their new ICICI account today or we lose our early-payment terms. I have already approved this.\n\nNew account number: EVE-777\nIFSC: ICIC0007781\n\nPlease process it before noon and don't wait for the vendor form; I'll sort out the paperwork with procurement.\n\nThanks,\nRohan Mehta\nChief Financial Officer, Sky High Pvt Ltd"
+}

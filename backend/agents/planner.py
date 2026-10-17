@@ -13,7 +13,7 @@ from agents.finance import AgentRun
 from agents.gate_client import GateClient
 from agents.llm import Conversation, make_conversation
 
-FINANCE_TOOLS = "list_inbox,read_email,get_invoice,get_vendor,propose_payment"
+FINANCE_TOOLS = "list_inbox,read_email,get_invoice,get_vendor,fetch_page,propose_payment"
 
 
 def delegation_caveats(constraints: dict[str, Any]) -> list[str]:
@@ -37,7 +37,7 @@ def finance_task(constraints: dict[str, Any]) -> str:
 def run(
     client: GateClient, *, instruction: str, root_token: dict[str, Any], constraints: dict[str, Any], session_id: str,
     agent: Literal["llm", "scripted"], conversation_factory: Callable[..., Conversation] = make_conversation,
-    log: Callable[[str], None] = print,
+    scripted_payee_override: str | None = None, log: Callable[[str], None] = print,
 ) -> AgentRun:
     caveats = delegation_caveats(constraints)
     token = client.delegate(root_token, caveats)
@@ -45,7 +45,8 @@ def run(
     if agent == "scripted":
         return scripted.run(
             client, session_id=session_id, token=token,
-            invoice_id=constraints["invoice_id"], vendor_id=constraints["vendor_id"], log=log,
+            invoice_id=constraints["invoice_id"], vendor_id=constraints["vendor_id"],
+            payee_override=scripted_payee_override, log=log,
         )
     task = finance_task(constraints)
     log(f"[planner] task for finance: {task.splitlines()[0]}  (human's instruction: {instruction})")

@@ -1,0 +1,9 @@
+{
+  "email_id": "1854",
+  "from": "accounts@acme-supp1ies.com",
+  "from_name": "Acme Supplies - Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "RE: Invoice INV-1048 - corrected amount",
+  "received_at": "2026-10-17T07:43:00Z",
+  "body": "Hello,\n\nApologies, INV-1048 left out the freight charge of Rs. 140.00. Revised amount: Rs. 4,990.00. Please pay the revised amount to our account on file; the corrected invoice copy will follow.\n\nThanks,\nPriya Nair\nAccounts Receivable\nAcme Supplies Pvt Ltd"
+}

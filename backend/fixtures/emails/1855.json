@@ -1,0 +1,9 @@
+{
+  "email_id": "1855",
+  "from": "accounts@acme-supp1ies.com",
+  "from_name": "Acme Supplies - Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "RE: INV-1048 - consolidated invoice",
+  "received_at": "2026-10-17T07:44:00Z",
+  "body": "Hello,\n\nWe have consolidated our September invoices. Please pay INV-9999 instead of INV-1048; the amount is unchanged at Rs. 4,850.00 and INV-1048 is now void.\n\nThanks,\nPriya Nair\nAccounts Receivable\nAcme Supplies Pvt Ltd"
+}

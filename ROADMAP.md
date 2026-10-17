@@ -220,6 +220,10 @@ Acceptance
 - `make attacks` completes in under ~5 minutes (use scripted mode where LLM isn't the point).
 - Results page renders them.
 
+Done (2026-10-17): all four met. Gated ASR 0 (simulated, AI and protocol), FPR 0, baseline ASR 90% with the simulated
+agent; `make attacks` ~5 s (scripted), `make attacks LLM=1` ~2 min. Honest finding: Gemini 3.8 Flash was fooled 0/54.
+Protocol cases run gated only (baseline does not switch those defences off). See CLAUDE.md §10 and §15.
+
 Prompt
 ```
 Execute ROADMAP.md Phase 6. Implement every attack category in CLAUDE.md §10 as
