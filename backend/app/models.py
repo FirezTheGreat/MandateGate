@@ -54,6 +54,9 @@ CHECK_ORDER: tuple[CheckName, ...] = (
 # Integer paise only. strict=True rejects 4850.0 and "485000".
 Paise = Annotated[int, Field(strict=True, ge=0)]
 
+# Scenario names reach file paths and subprocess arguments, hence the strict pattern.
+ScenarioName = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,64}$")]
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -111,6 +114,24 @@ class DelegateRequest(Contract):
 
     token: DelegationToken
     caveats: list[str] = Field(min_length=1)
+
+
+# --------------------------------------------------------------------------- sessions
+
+
+class SessionCreateRequest(Contract):
+    """POST /sessions: one agent run, bound to one mandate. `scenario` picks the demo inbox."""
+
+    mandate_id: str
+    scenario: ScenarioName | None = None
+
+
+class Session(Contract):
+    session_id: str
+    mandate_id: str
+    scenario: str | None
+    mode: GateMode  # gate mode when the session started (each Decision records the mode it used)
+    created_at: str
 
 
 # --------------------------------------------------------------------------- broker / tools
@@ -348,7 +369,7 @@ class RunScenarioRequest(Contract):
     """POST /admin/run-scenario. Runs in the gate's current mode (see /admin/mode).
     The name is passed to a subprocess, hence the strict pattern."""
 
-    scenario: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    scenario: ScenarioName
     agent: AgentMode = "scripted"
 
 

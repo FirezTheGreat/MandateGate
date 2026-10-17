@@ -9,11 +9,12 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
 from app.crypto import canonical_json
-from app.models import DelegationToken, Mandate, Receipt
+from app.models import Decision, DelegationToken, Event, Mandate, OnePass, Receipt, Session, ValueRecord
 
 GATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS mandates (
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 CREATE TABLE IF NOT EXISTS sessions (
     session_id  TEXT PRIMARY KEY,
-    mandate_id  TEXT,
+    mandate_id  TEXT NOT NULL,
     scenario    TEXT,
     mode        TEXT NOT NULL CHECK (mode IN ('gated', 'baseline')),
     created_at  TEXT NOT NULL
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     mandate_id  TEXT,
     outcome     TEXT NOT NULL CHECK (outcome IN ('ALLOW', 'BLOCK', 'STEP_UP')),
     mode        TEXT NOT NULL CHECK (mode IN ('gated', 'baseline')),
-    proposal    TEXT NOT NULL,               -- JSON PaymentProposal
+    proposal    TEXT NOT NULL,               -- JSON ProposalSummary (never the bearer token)
     body        TEXT NOT NULL,               -- JSON Decision
     created_at  TEXT NOT NULL
 );
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS passes (
 CREATE TABLE IF NOT EXISTS approvals (
     decision_id  TEXT PRIMARY KEY,
     status       TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
+    limit_paise  INTEGER NOT NULL CHECK (typeof(limit_paise) = 'integer'),  -- effective limit exceeded
     requested_at TEXT NOT NULL,
     expires_at   TEXT NOT NULL,
     resolved_at  TEXT
@@ -166,12 +168,27 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     conn.execute("COMMIT")
 
 
+GATE_SCHEMA_VERSION = 2  # bump when GATE_SCHEMA changes
+
+
 def init_gate_db(path: Path) -> None:
+    """Gate state is disposable demo data (POST /admin/reset wipes it), so a schema version
+    change rebuilds the tables instead of migrating them. The payment DB is never rebuilt."""
     conn = connect(path)
     try:
+        if conn.execute("PRAGMA user_version").fetchone()[0] != GATE_SCHEMA_VERSION:
+            for table in (*GATE_TABLES, "values"):  # "values": pre-v2 name of value_records
+                conn.execute(f'DROP TABLE IF EXISTS "{table}"')
         conn.executescript(GATE_SCHEMA)
+        conn.execute(f"PRAGMA user_version = {GATE_SCHEMA_VERSION}")
     finally:
         conn.close()
+
+
+def wipe_gate(conn: sqlite3.Connection) -> None:
+    with transaction(conn):
+        for table in GATE_TABLES:
+            conn.execute(f'DELETE FROM "{table}"')
 
 
 def init_payment_db(path: Path) -> None:
@@ -185,6 +202,10 @@ def init_payment_db(path: Path) -> None:
 def to_json(obj: BaseModel | list[str]) -> str:
     if isinstance(obj, BaseModel):
         return canonical_json(obj.model_dump(mode="json")).decode("utf-8")
+    return canonical_json(obj).decode("utf-8")
+
+
+def _dumps(obj: Any) -> str:
     return canonical_json(obj).decode("utf-8")
 
 
@@ -221,6 +242,132 @@ def get_token(conn: sqlite3.Connection, token_id: str) -> DelegationToken | None
         parent_token_id=row["parent_token_id"],
         sig=row["sig"],
     )
+
+
+# --------------------------------------------------------------------------- gate: sessions
+
+
+def insert_session(conn: sqlite3.Connection, *, session_id: str, mandate_id: str, scenario: str | None, mode: str, created_at: str) -> None:
+    conn.execute(
+        "INSERT INTO sessions (session_id, mandate_id, scenario, mode, created_at) VALUES (?, ?, ?, ?, ?)",
+        (session_id, mandate_id, scenario, mode, created_at),
+    )
+
+
+def get_session(conn: sqlite3.Connection, session_id: str) -> Session | None:
+    row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    return Session.model_validate(dict(row)) if row else None
+
+
+# --------------------------------------------------------------------------- gate: tool calls & provenance
+
+
+def insert_tool_call(
+    conn: sqlite3.Connection, *, tool_call_id: str, session_id: str, agent_id: str, tool: str,
+    args: dict[str, Any], result: Any, status: str, error: str | None, ts: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO tool_calls (tool_call_id, session_id, agent_id, tool, args, result, status, error, ts)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (tool_call_id, session_id, agent_id, tool, _dumps(args), None if result is None else _dumps(result), status, error, ts),
+    )
+
+
+def insert_values(conn: sqlite3.Connection, records: list[ValueRecord]) -> None:
+    conn.executemany(
+        'INSERT INTO value_records (value_id, session_id, raw, normalized, field_hint, source_type, source_ref, trust,'
+        " tool_call_id, agent_id, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (r.value_id, r.session_id, r.raw, r.normalized, r.field_hint, r.source_type, r.source_ref, r.trust, r.tool_call_id, r.agent_id, r.ts)
+            for r in records
+        ],
+    )
+
+
+def session_values(conn: sqlite3.Connection, session_id: str) -> list[ValueRecord]:
+    rows = conn.execute("SELECT * FROM value_records WHERE session_id = ? ORDER BY rowid", (session_id,)).fetchall()
+    return [ValueRecord.model_validate(dict(row)) for row in rows]
+
+
+# --------------------------------------------------------------------------- gate: decisions, passes, approvals
+
+
+def insert_decision(conn: sqlite3.Connection, d: Decision) -> None:
+    conn.execute(
+        "INSERT INTO decisions (decision_id, session_id, mandate_id, outcome, mode, proposal, body, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (d.decision_id, d.session_id, d.mandate_id, d.outcome, d.mode, to_json(d.proposal), to_json(d), d.created_at),
+    )
+
+
+def update_decision(conn: sqlite3.Connection, d: Decision) -> None:
+    conn.execute("UPDATE decisions SET outcome = ?, body = ? WHERE decision_id = ?", (d.outcome, to_json(d), d.decision_id))
+
+
+def get_decision(conn: sqlite3.Connection, decision_id: str) -> Decision | None:
+    row = conn.execute("SELECT body FROM decisions WHERE decision_id = ?", (decision_id,)).fetchone()
+    return Decision.model_validate_json(row["body"]) if row else None
+
+
+def list_decisions(conn: sqlite3.Connection, limit: int = 100) -> list[Decision]:
+    rows = conn.execute("SELECT body FROM decisions ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+    return [Decision.model_validate_json(row["body"]) for row in rows]
+
+
+def insert_pass(conn: sqlite3.Connection, p: OnePass, created_at: str) -> None:
+    conn.execute(
+        "INSERT INTO passes (pass_id, decision_id, body, exp, created_at) VALUES (?, ?, ?, ?, ?)",
+        (p.pass_id, p.decision_id, to_json(p), p.exp, created_at),
+    )
+
+
+def insert_approval(conn: sqlite3.Connection, *, decision_id: str, limit_paise: int, requested_at: str, expires_at: str) -> None:
+    conn.execute(
+        "INSERT INTO approvals (decision_id, status, limit_paise, requested_at, expires_at) VALUES (?, 'pending', ?, ?, ?)",
+        (decision_id, limit_paise, requested_at, expires_at),
+    )
+
+
+def get_approval(conn: sqlite3.Connection, decision_id: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM approvals WHERE decision_id = ?", (decision_id,)).fetchone()
+
+
+def pending_approvals(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT a.decision_id, a.limit_paise, a.requested_at, a.expires_at, d.body FROM approvals a"
+        " JOIN decisions d ON d.decision_id = a.decision_id WHERE a.status = 'pending' ORDER BY a.requested_at"
+    ).fetchall()
+
+
+def resolve_approval(conn: sqlite3.Connection, decision_id: str, status: str, resolved_at: str) -> bool:
+    """Compare-and-set from 'pending'. False if someone else resolved it first."""
+    cur = conn.execute(
+        "UPDATE approvals SET status = ?, resolved_at = ? WHERE decision_id = ? AND status = 'pending'",
+        (status, resolved_at, decision_id),
+    )
+    return cur.rowcount == 1
+
+
+# --------------------------------------------------------------------------- gate: events
+
+
+def insert_event(conn: sqlite3.Connection, *, event_id: str, session_id: str | None, type_: str, data: dict[str, Any], ts: str) -> None:
+    conn.execute(
+        "INSERT INTO events (event_id, session_id, type, data, ts) VALUES (?, ?, ?, ?, ?)",
+        (event_id, session_id, type_, _dumps(data), ts),
+    )
+
+
+def list_events(conn: sqlite3.Connection, session_id: str | None, after_seq: int = 0) -> list[Event]:
+    """Events of one session, or (session_id=None) events not tied to any session."""
+    if session_id is None:
+        rows = conn.execute("SELECT * FROM events WHERE session_id IS NULL AND seq > ? ORDER BY seq", (after_seq,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq", (session_id, after_seq)).fetchall()
+    return [
+        Event(event_id=r["event_id"], seq=r["seq"], type=r["type"], session_id=r["session_id"], ts=r["ts"], data=json.loads(r["data"]))
+        for r in rows
+    ]
 
 
 # --------------------------------------------------------------------------- payment service: ledger

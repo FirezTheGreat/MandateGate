@@ -1,4 +1,25 @@
-"""In-process pub/sub feeding /events/stream (SSE) and the tracer.
+"""Gate events: every tool call, critical value, proposal, decision and suspicious input.
 
-Phase 4.
+Phase 2 persists them (GET /sessions/{id}/events). Phase 4 adds the in-process pub/sub
+that feeds GET /events/stream (SSE).
+
+`data` shapes (the dashboard relies on these):
+    tool_call           {tool_call_id, agent_id, tool, args, status, values_recorded, error?}
+    value_recorded      {value_id, raw, field_hint, source_ref, trust}
+    proposal            {agent_id, invoice_id, vendor_id, payee_account, amount_paise}
+    decision            {decision_id, outcome, mode, failed: [check names], via?}
+    escalation_attempt  {token_id, mandate_id, caveats: [flagged caveats]}
+    suspicious_input    {path, fields: [rejected field names]}
+    payment             Phase 4
 """
+
+import sqlite3
+from typing import Any
+
+from app import db
+from app.crypto import new_id
+from app.models import EventType
+
+
+def emit(conn: sqlite3.Connection, type_: EventType, session_id: str | None, data: dict[str, Any], ts: str) -> None:
+    db.insert_event(conn, event_id=new_id("evt"), session_id=session_id, type_=type_, data=data, ts=ts)

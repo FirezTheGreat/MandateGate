@@ -1,7 +1,7 @@
-// Phase 0 wiring proof: renders the stub decision from GET /decisions/dec_example.
+// Wiring proof: renders the most recent real decision from GET /decisions.
 // Phase 5 replaces this with MandateBar, ProvenanceGraph, DecisionPanel, EventFeed, etc.
 import { useEffect, useState } from "react";
-import { getDecision } from "../api";
+import { listDecisions } from "../api";
 import type { CheckStatus, Decision, Outcome } from "../types";
 
 const BANNER: Record<Outcome, { text: string; className: string }> = {
@@ -17,13 +17,20 @@ const MARK: Record<CheckStatus, { symbol: string; className: string }> = {
 };
 
 export default function Live() {
-  const [decision, setDecision] = useState<Decision | null>(null);
+  const [decisions, setDecisions] = useState<Decision[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getDecision("dec_example")
-      .then(setDecision)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    const load = () =>
+      listDecisions()
+        .then((d) => {
+          setDecisions(d);
+          setError(null);
+        })
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    load();
+    const timer = window.setInterval(load, 2000); // Phase 4 replaces polling with SSE
+    return () => window.clearInterval(timer);
   }, []);
 
   if (error) {
@@ -33,7 +40,16 @@ export default function Live() {
       </div>
     );
   }
-  if (!decision) return <p className="text-slate-500">Loading decision…</p>;
+  if (!decisions) return <p className="text-slate-500">Loading decisions…</p>;
+  const decision = decisions[0];
+  if (!decision) {
+    return (
+      <p className="max-w-2xl text-slate-600">
+        No decisions yet. Run a scenario (<code>make scenario</code>, Phase 3) or submit a proposal to{" "}
+        <code>POST /proposals</code>, and the latest decision appears here.
+      </p>
+    );
+  }
 
   const banner = BANNER[decision.outcome];
   return (
@@ -42,7 +58,7 @@ export default function Live() {
         {banner.text}
       </div>
       <p className="text-slate-600">
-        Decision <code>{decision.decision_id}</code> ({decision.mode} mode, stub data): pay{" "}
+        Decision <code>{decision.decision_id}</code> ({decision.mode} mode): pay{" "}
         <b>{decision.proposal.payee_account}</b> ₹{(decision.proposal.amount_paise / 100).toLocaleString("en-IN")}{" "}
         for {decision.proposal.invoice_id}
       </p>
@@ -55,7 +71,7 @@ export default function Live() {
               {c.detail && <div className="text-slate-600">{c.detail}</div>}
               {c.required && (
                 <div className="text-slate-700">
-                  Required: <b>{c.required}</b> · Found: <b className="text-red-700">{c.found?.join(", ")}</b>
+                  Required: <b>{c.required}</b> · Found: <b className="text-red-700">{c.found?.join(", ") || "nothing"}</b>
                 </div>
               )}
             </div>

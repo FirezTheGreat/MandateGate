@@ -27,6 +27,12 @@ The gate enforces four guarantees, all in plain deterministic Python with **no L
 | **Provenance** | The gate brokers every tool call, so it records where every value came from. When the agent proposes `EVE-777`, the gate looks it up and finds it only in Email #1842, which is untrusted. The agent never carries trust tags, so it cannot forge them. |
 | **One-time pass** | An approved payment gets an HMAC-sealed, single-use pass that expires after 120 seconds and is bound to the exact payment fields. The payment service refuses anything without one. |
 
+### The assumptions we challenge
+
+1. **Authorising the actor is not enough.** Today's checks confirm *who* is acting. MandateGate also asks where the data came from.
+2. **Prompt injection is not only a model problem.** We don't try to make the AI impossible to fool. We assume it will be fooled, and make that harmless.
+3. **Keeping a human in the loop doesn't mean approving every step.** You approve your intent once, and you're asked again only when an action goes beyond it.
+
 Every proposal gets one of three outcomes:
 
 - **ALLOW**: a pass is issued.
@@ -127,14 +133,21 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 
 - [x] **Phase 0**: scaffold, frozen data contracts, fixtures, stubbed API
 - [x] **Phase 1**: crypto, mandates, delegation tokens, one-time passes, real payment service
-- [ ] Phase 2: broker, provenance, policy engine
+- [x] **Phase 2**: tool broker, provenance tracking, decision engine, sessions, step-up approvals
 - [ ] Phase 3: agents (scripted + LLM), end-to-end scenarios
 - [ ] Phase 4: approvals, attack tracer, live events (SSE)
 - [ ] Phase 5: dashboard
 - [ ] Phase 6: attack suite and metrics
 - [ ] Phase 7: hardening and demo assets
 
-The trust primitives are real and tested: signed mandates, delegation tokens that can only narrow, and one-time passes. The payment service verifies each pass, burns it, and only then pays. A pass that has been tampered with, replayed, expired, or used for the wrong account is rejected. Routes that depend on later phases (proposals, tools, trace, events) still return realistic stub data, so the dashboard can be built in parallel.
+The gate is real end to end over HTTP. Every tool call goes through the broker, which records where each value came from. Proposals get a real ALLOW, BLOCK or STEP_UP decision. Approved payments get a one-time pass, and the payment service verifies it, uses it up, and only then pays. Running all three scenarios against the live services (with scripted calls, no LLM yet) gave these results:
+
+- The scam email without MandateGate paid ₹4,850 to EVE-777.
+- With MandateGate it was blocked, and the payee was traced to `email:1842 (untrusted)`.
+- Legit payments went through.
+- The ₹5,200 invoice waited for human approval.
+
+The attack trace graph and the live event stream are still stubs (Phase 4), and the AI agents arrive in Phase 3.
 
 ## Repository layout
 
@@ -164,6 +177,7 @@ The gate runs on `:8000`. The full contract is in [`CLAUDE.md` §7](CLAUDE.md#7-
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/mandates`, `/delegate` | Create a mandate and its root token; attenuate a token |
+| POST | `/sessions` | Start one agent run, bound to one mandate |
 | GET / POST | `/tools`, `/tools/{name}` | List brokered tools; execute one through the broker |
 | POST | `/proposals` | Submit a payment proposal and get a Decision |
 | GET / POST | `/approvals`, `/approvals/{id}` | List pending step-ups; approve or deny one |

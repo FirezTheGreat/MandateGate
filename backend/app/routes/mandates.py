@@ -3,9 +3,9 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app import db
+from app import db, events
 from app.clock import to_iso, utc_now
-from app.delegation import CaveatError, attenuate, mint_root, root_caveats, verify_chain
+from app.delegation import CaveatError, attenuate, detect_escalation, mint_root, root_caveats, verify_chain
 from app.deps import ConnDep, SettingsDep
 from app.errors import api_error
 from app.mandate import create_mandate
@@ -35,8 +35,13 @@ def post_delegate(req: DelegateRequest, settings: SettingsDep, conn: ConnDep) ->
         child = attenuate(req.token, req.caveats)
     except CaveatError as e:
         return api_error(400, "invalid_caveat", str(e))
-    # Escalation attempts (a looser bound appended) have no effect; Phase 4 surfaces
-    # them as `escalation_attempt` events via delegation.detect_escalation().
+    ts = to_iso(utc_now())
+    # A widening caveat has no effect (conjunction), but the attempt is worth showing.
+    escalations = detect_escalation(child.caveats)
     with db.transaction(conn):
-        db.insert_token(conn, child, to_iso(utc_now()))
+        db.insert_token(conn, child, ts)
+        if escalations:
+            events.emit(conn, "escalation_attempt", None, {
+                "token_id": child.token_id, "mandate_id": child.mandate_id, "caveats": escalations,
+            }, ts)
     return child

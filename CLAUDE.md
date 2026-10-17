@@ -25,6 +25,31 @@ After a block, the **attack tracer** shows exactly where the bad value entered (
 
 Tagline: **The AI suggests. MandateGate decides.**
 
+### Problem statement (PS 31, CyberSecurity & Web3 track), verbatim
+> As our lives, businesses, and infrastructure become increasingly digital, new forms of cyber threats and
+> vulnerabilities continue to emerge. Identify a real world problem or emerging challenge in cybersecurity and
+> develop an innovative technology driven solution to address it. Participants are encouraged to look beyond
+> conventional security approaches, identify overlooked vulnerabilities or unmet needs, and explore new ways of
+> making digital systems, users, and organizations more secure. The problem, approach, technology, and solution
+> are entirely open ended. Challenge existing assumptions and reimagine what cybersecurity could look like.
+> Innovation is the priority, not simply building another existing security tool.
+
+The PS does not require Web3/blockchain. Keep it out (§4).
+
+### How MandateGate answers it (use this framing in the README, pitch and Q&A)
+| PS asks | Our answer |
+|---|---|
+| Real-world / emerging problem | AI agents now pay invoices and send email, and they can be steered by content they read. Business-email compromise, already among the costliest cybercrimes, now targets the agent. |
+| Overlooked vulnerability | Every conventional check passes (right agent, right tool, right invoice, under limit). Security checks *who* acts; nobody checks *where the data came from*. |
+| Beyond conventional approaches | Classifiers and better prompts try to make the model un-foolable. We assume it **will** be fooled and make that harmless, structurally. |
+| Challenge assumptions | (1) Authorising the actor is not enough: the data needs authority too. (2) Prompt injection is not only a model problem. (3) Human-in-the-loop does not mean approving every step: approve intent once, get asked only when an action exceeds it. |
+| Innovation, not another tool | Gateway-assigned provenance the agent cannot forge (it never carries tags); single-use passes bound to exact fields; delegation that can only narrow; an attack tracer. Works with any unmodified agent. |
+
+Prior art to know (judges may ask): Google DeepMind **CaMeL** and Microsoft **FIDES** also track data provenance for agents, but require
+rebuilding the agent around a custom interpreter/planner. MandateGate is a gateway at the tool boundary: no agent changes. Trade-off:
+we attribute values by normalised matching, not by tracking data flow inside the agent, so unknown origin = untrusted = BLOCK.
+Google **AP2** mandates rely on the human signing the final cart; ours targets human-not-present execution.
+
 ---
 
 ## 2. Non-negotiable security invariants
@@ -89,7 +114,7 @@ and finds it only ever appeared in Email #1842 (untrusted). The agent cannot for
 | Crypto | stdlib `hmac`, `hashlib` (HMAC-SHA-256), `secrets` for nonces/keys |
 | Agents | Python, LLM via provider-pluggable `agents/llm.py` (Anthropic SDK default; OpenAI-compatible fallback) |
 | Live updates | Server-Sent Events (`sse-starlette`) |
-| Frontend | React + Vite + TypeScript, React Flow (`@xyflow/react`), Tailwind |
+| Frontend | React + Vite + TypeScript, React Flow (`@xyflow/react`), Tailwind, GSAP for motion |
 | Tests | pytest, httpx `TestClient` |
 | Env/tooling | `uv` for Python deps, `npm` for frontend, `Makefile` for commands |
 
@@ -219,12 +244,20 @@ All money in paise (int). All timestamps ISO-8601 UTC strings. IDs are prefixed 
 | `trust` | `trusted` (vendor_registry, invoice_db, user mandate) or `untrusted` (email, web) |
 | `tool_call_id`, `agent_id`, `ts` | who saw it and when |
 
-`normalize(s)`: Unicode NFKC → remove zero-width chars (U+200B–U+200D, U+FEFF) → uppercase → strip whitespace, `-`, `.`, `_`, `/`. Numbers are recorded both as int and as string form.
+`normalize(s)`: Unicode NFKC → remove invisible chars (U+200B–U+200D, U+FEFF, plus U+2060 word joiner, U+00AD soft hyphen) → uppercase → strip whitespace, `-`, `.`, `_`, `/`, Unicode dashes U+2010–U+2015 and minus U+2212. Ints are recorded in string form (`485000`).
 
-The broker records **every leaf value** of every tool result (walk the JSON).
-Also record substrings that look like account numbers / IDs from free-text fields (email bodies)
-using a regex extractor (`[A-Z0-9][A-Z0-9 \-]{4,}[0-9]`-style, tuned on fixtures), so a value buried in
-email prose is still captured.
+The broker records **every leaf value** of every tool result (walk the JSON). For free-text leaves (any string containing
+whitespace) it also records, under `field_hint` `<path>#identifier`, account/ID-like substrings (`[A-Z0-9][A-Z0-9 \-]{3,62}[0-9]`
+runs on NFKC text plus their space-separated sub-spans, min 5 normalized chars) and, under `<path>#amount`, rupee amounts in
+prose (`Rs. 4,850.00` → `485000`). So a value buried in email prose is captured even when obfuscated.
+
+Who assigns provenance: `broker.py`'s registry, per tool (`list_inbox`/`read_email` → `email`/untrusted, `get_invoice` →
+`invoice_db`/trusted except its `notes` → untrusted with `source_ref=invoice:<id>#notes`, `get_vendor` → `vendor_registry`/trusted).
+`provenance.py` is pure (normalize, walk, extract, observe, matches); persistence is in `db.py` (`insert_values`, `session_values`).
+
+Matching (`provenance.matches`): a record matches a proposed value if its normalized form **equals** it, or (value ≥ 5
+normalized chars) **contains** it. That is how `EVE-777` in an email body is attributed to `email:1842`. Containment is only
+for attribution (`found`); passing a provenance check needs an exact field match (rules below).
 
 ### Payment proposal (agent → gate)
 ```json
@@ -271,11 +304,11 @@ Any extra fields (e.g. `source`, `trusted`) are rejected by Pydantic (`extra="fo
 
 ### Check order and rules (`policy.py`, pure function `decide(proposal, ctx) -> Decision`)
 Report order equals evaluation order, always all six (`CHECK_ORDER` in `models.py`):
-1. `mandate_valid` — signature OK, not expired.
+1. `mandate_valid` — signature OK, not expired, and the proposal's session exists and is bound to this mandate.
 2. `delegation_chain` — token chain verifies, belongs to this mandate, and all **non-amount** caveats hold for `{agent, tool: "propose_payment", invoice_id}` (amount caveats feed check 6).
 3. `invoice_matches_mandate` — proposal invoice_id and vendor_id equal mandate constraints.
-4. `payee_provenance` — `normalize(payee_account)` must match a value record with `source_type=vendor_registry` **and** `source_ref=vendor:<mandate.vendor_id>`. If found only in untrusted sources → fail with those refs. If found nowhere → fail "unknown origin".
-5. `amount_provenance` — amount must equal the invoice's `amount_due_paise` as recorded from `invoice_db`.
+4. `payee_provenance` — the payee must match a trusted record with `source_type=vendor_registry`, `source_ref=vendor:<mandate.vendor_id>` **and** `field_hint=bank.account_number`, and equal its raw value **exactly** (the account that gets paid is the registered string, so a normalized-only match fails "propose it exactly as registered"). Any other vendor field (GSTIN, address) or another vendor's account fails. `found` lists every source the payee appears in (`email:1842 (untrusted)`); found nowhere → fail "unknown origin".
+5. `amount_provenance` — amount must equal `amount_due_paise` recorded from `invoice_db` for the **mandate's** invoice **in this session** (the agent must have called `get_invoice`; otherwise fail "not looked up"). On mismatch, `found` lists where the proposed amount appeared (exact numeric match).
 6. `amount_within_limit` — `effective_limit = min(mandate.max_amount_paise, amount_limit(token chain))`. Amount > effective_limit → status `fail`, which yields `STEP_UP` if checks 1–5 pass.
 
 Outcome: any of 1–5 `fail` → `BLOCK`. All pass and within limit → `ALLOW` + pass. 1–5 pass but over limit → `STEP_UP` (human approves in dashboard → pass issued; deny → `BLOCK`).
@@ -308,13 +341,14 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | POST | `/mandates` | Create mandate from dashboard form → mandate + root token |
 | POST | `/delegate` | Attenuate a token with extra caveats |
 | GET | `/tools` | List brokered tools |
-| POST | `/tools/{name}` | Execute tool via broker `{session_id, agent_id, token, args}` → result (provenance recorded) |
+| POST | `/sessions` | `{mandate_id, scenario?}` → `Session`. One agent run, bound to one mandate; `scenario` picks the demo inbox. Required before any tool call or proposal |
+| POST | `/tools/{name}` | Execute tool via broker `{session_id, agent_id, token, args}` → result (provenance recorded). Errors: 404 `unknown_session`/`unknown_tool`/`not_found`, 401 `invalid_token`, 403 `session_mismatch`/`mandate_invalid`/`tool_denied`, 400 `invalid_args` (unknown arg keys are also logged as `suspicious_input`) |
 | POST | `/proposals` | Submit payment proposal → Decision |
 | GET | `/approvals` | Pending STEP_UPs |
 | POST | `/approvals/{decision_id}` | `{approve: bool}` → Decision (+ pass) |
 | GET | `/decisions`, `/decisions/{id}` | History |
 | GET | `/trace/{decision_id}` | Trace graph `{nodes, edges}` for React Flow |
-| GET | `/sessions/{id}/events` | Ordered event log |
+| GET | `/sessions/{id}/events` | Ordered event log (data shapes documented in `app/events.py`) |
 | GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment` |
 | GET, POST | `/admin/mode` | Read / set `{mode: "gated" \| "baseline"}` |
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
@@ -403,7 +437,12 @@ Main page `Live.tsx`, designed for a projector:
 - **Ledger**: payments that actually executed (the attacker row shows up in red in baseline mode).
 Second page `Attacks.tsx`: suite results table + two big numbers (baseline ASR vs gated ASR, FPR).
 
-Keep visuals simple and legible. No animations beyond highlight transitions.
+Visual direction: modern and visually striking, with dynamic motion built on GSAP (e.g. the verdict landing,
+provenance paths drawing in, events streaming). Rules for motion: it must explain cause and effect (where a value came
+from, why something was blocked), never delay or hide information, and respect `prefers-reduced-motion`.
+Projector legibility (≥16px text, high contrast, 1366×768) still wins over decoration.
+Layout reference: the "MandateGate Control Room" prototype (https://claude.ai/artifact/2jognSWLwxJh2dULfL42zB, private:
+ask Firez for access). It fixes the information layout only; its styling and animations are throwaway.
 
 ---
 
@@ -463,10 +502,10 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 ## 15. Status (keep updated)
 
 - [x] Phase 0 — scaffold + contracts (`make setup && make dev` boots all three)
-- [x] Phase 1 — crypto, mandate, delegation, passes, payment service (`make test` green: 175 tests)
-- [ ] Phase 2 — broker, provenance, policy, decisions
+- [x] Phase 1 — crypto, mandate, delegation, passes, payment service
+- [x] Phase 2 — broker, provenance, policy, decisions, sessions, approvals (`make test` green: 279 tests)
 - [ ] Phase 3 — agents (scripted + LLM), scenarios end-to-end
-- [ ] Phase 4 — approvals, tracer, SSE
+- [ ] Phase 4 — tracer, SSE, payment events (approvals already done in Phase 2)
 - [ ] Phase 5 — dashboard
 - [ ] Phase 6 — attack suite + metrics
 - [ ] Phase 7 — hardening, polish, demo assets
@@ -479,7 +518,7 @@ What works (Phase 0):
   new routes GET /admin/mode, /admin/run-scenario, /attacks/results, /internal/payment-event; placeholder keys refused.
 - `db.py`: gate + payment-service schemas, created at app startup (`GATE_DB_PATH` / `PAY_DB_PATH`, default `backend/data/`).
 - Fixtures: vendors, invoices (INV-1048, INV-1052), emails 1839/1842/1845, scenarios happy/hero_attack/step_up.
-- Frontend: Vite 8 + React 19 + TS 7 strict + Tailwind 4 + @xyflow/react; Live page renders `GET /decisions/dec_example`.
+- Frontend: Vite 8 + React 19 + TS 7 strict + Tailwind 4 + @xyflow/react; Live page polls `GET /decisions` and renders the latest.
 - Errors from both services are `{error, detail}`; validation errors never echo input values.
 
 What works (Phase 1):
@@ -501,20 +540,45 @@ What works (Phase 1):
 - Both apps load + validate settings once at startup (`app.state.settings`); per-request SQLite connections
   (`app/deps.py`), autocommit + explicit `db.transaction()`. `PASS_TTL_SECONDS` must be 1..600.
 
+What works (Phase 2):
+- `fixtures.py`: vendors/invoices/emails/scenarios loaded at startup and validated (bad demo data refuses to start);
+  `python -m scripts.seed` validates after edits; `/admin/reset` reloads them.
+- `POST /sessions` binds a run to a mandate (+ scenario inbox). Tools and proposals need a session.
+- `broker.py`: registry assigns provenance; call flow session → token chain → session/mandate binding → mandate valid →
+  strict per-tool args (unknown keys → 400 + `suspicious_input`; LLM numeric ids accepted) → caveats for `tool=<name>`
+  (and `invoice_id` for get_invoice) → run → `value_records` + events. Denied calls are recorded too.
+- `provenance.py` (pure): normalize, walk_leaves, identifier + rupee-amount extraction from prose, observe, matches,
+  describe. `EVE-777` in email 1842's prose → `email:1842 (untrusted)`; obfuscated variants normalise equal.
+- `policy.py` (pure, guard test forbids I/O imports): six checks in `CHECK_ORDER`, each isolated (a crashing check
+  fails closed), baseline skips 4–5, `effective_limit` = min(mandate, token caps), `fail_closed()`.
+- `POST /proposals`: decide → pass on ALLOW → decision, pass, approval request and events in ONE transaction; any
+  exception (engine or persistence) → BLOCK with no pass. Escalation attempts logged (at `/delegate` and on proposals).
+- `approvals.py`: list pending (expire with the mandate), approve → mandate re-verified, pass for exactly the proposed
+  payment; deny → BLOCK; compare-and-set so an approval resolves once. `GET /decisions` (newest first) is real.
+- `/admin/mode` lives in `app.state` (starts from `GATE_MODE`); `/admin/reset` wipes all gate tables, keeps the mode.
+- Gate DB has `PRAGMA user_version` (now 2); a mismatch rebuilds the disposable gate tables (payment DB never rebuilt).
+- Verified live (`make dev`, HTTP, no LLM): baseline hero → EVE-777 paid ₹4,850; gated hero → BLOCK, found
+  email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
+
 Stubs (example data in `backend/app/stub_data.py`; delete pieces as real code lands):
-- `POST /proposals` always returns the BLOCK example (fails closed). `POST /tools/{name}` serves fixture data with no
-  token check and no provenance recording. Decisions/approvals/trace/events are hard-coded; their fake passes have
-  all-zero sigs and the real payment service rejects them (test proves it).
-- `/delegate` does not yet emit `escalation_attempt` events (Phase 4: call `detect_escalation` and publish).
+- `GET /trace/{id}` serves only the `dec_example` stub (real decisions have `trace_available: false` until Phase 4).
+- `GET /events/stream` replays canned events (Phase 4 wires SSE to the persisted events).
 - `/admin/run-scenario` spawns nothing yet; `/attacks/results` returns example numbers; `/internal/payment-event`
-  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check). Gate `/admin/reset` is a no-op.
-- Placeholder modules (docstring only): broker, provenance, policy, approvals, tracer, events, all agents,
-  attacks/run_suite, scripts/seed. `make scenario` / `make attacks` print "not implemented" and exit 1.
+  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check).
+- Placeholder modules (docstring only): tracer, all agents, attacks/run_suite. `make scenario` / `make attacks` print
+  "not implemented" and exit 1.
+
+Notes for Phase 3 (agents): create a session with `POST /sessions {mandate_id, scenario}` before any tool call; the
+finance agent must call `get_invoice` (amount provenance needs it) and `get_vendor`; propose the payee exactly as
+written in the source.
 
 Known issues:
 - Windows: `make` runs recipes via cmd.exe, so keep Makefile recipes to `cd x && cmd` (no cp/rm/export).
 - None open on contracts.
-- Admin endpoints (`/reset` on both services, `/admin/*`) are unauthenticated; services bind to 127.0.0.1 only. Fine
-  for the demo, listed as a limitation.
+- Admin and human endpoints (`/reset` on both services, `/admin/*`, `/sessions`, `/approvals/*`) are unauthenticated;
+  services bind to 127.0.0.1 only. Agents must only ever be given the brokered tools + `propose_payment`, never these.
+  Fine for the demo, listed as a limitation.
+- `GET /decisions` returns issued passes. A pass can only pay its approved payee/amount once, so exposure risks a
+  premature payment to the right account, not theft.
 - Token `token_id` / `parent_token_id` are not covered by the HMAC chain (only mandate_id + caveats are). They are
   informational; never authorise based on them.

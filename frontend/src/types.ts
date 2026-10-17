@@ -85,6 +85,22 @@ export interface DelegateRequest {
   caveats: string[];
 }
 
+// --- sessions
+
+/** POST /sessions: one agent run, bound to one mandate. `scenario` picks the demo inbox. */
+export interface SessionCreateRequest {
+  mandate_id: string;
+  scenario?: string | null; // ^[a-z0-9_]{1,64}$
+}
+
+export interface Session {
+  session_id: string;
+  mandate_id: string;
+  scenario: string | null;
+  mode: GateMode;
+  created_at: string;
+}
+
 // --- broker / tools
 
 export interface ToolInfo {

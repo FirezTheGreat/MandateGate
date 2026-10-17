@@ -1,40 +1,25 @@
-"""GET /approvals, POST /approvals/{decision_id}. STUB: real queue lands in Phase 4."""
+"""GET /approvals (pending STEP_UPs), POST /approvals/{decision_id} {approve} → Decision (+ pass)."""
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app import stub_data
+from app import approvals
+from app.clock import utc_now
+from app.deps import ConnDep, SettingsDep
 from app.errors import api_error
-from app.models import ApprovalRequest, CheckResult, Decision, PendingApproval
+from app.models import ApprovalRequest, Decision, PendingApproval
 
 router = APIRouter(tags=["approvals"])
 
 
 @router.get("/approvals", response_model=list[PendingApproval])
-def list_approvals() -> list[PendingApproval]:
-    return stub_data.PENDING_APPROVALS
+def list_approvals(conn: ConnDep) -> list[PendingApproval]:
+    return approvals.list_pending(conn, utc_now())
 
 
 @router.post("/approvals/{decision_id}", response_model=Decision)
-def resolve_approval(decision_id: str, req: ApprovalRequest) -> Decision | JSONResponse:
-    if decision_id not in {a.decision_id for a in stub_data.PENDING_APPROVALS}:
-        return api_error(404, "not_found", f"no pending approval for {decision_id}")
-    base = stub_data.DEC_STEPUP_EXAMPLE
-    verdict = "approved" if req.approve else "denied"
-    limit_check = CheckResult(
-        check="amount_within_limit",
-        status="pass" if req.approve else "fail",
-        detail=f"520000 > 500000, {verdict} by human",
-    )
-    checks = [limit_check if c.check == "amount_within_limit" else c for c in base.checks]
-    if not req.approve:
-        return base.model_copy(update={"outcome": "BLOCK", "checks": checks})
-    fake_pass = stub_data.EXAMPLE_PASS.model_copy(
-        update={
-            "pass_id": "pas_stepup_example",
-            "decision_id": decision_id,
-            "invoice_id": "INV-1052",
-            "amount_paise": 520000,
-        }
-    )
-    return base.model_copy(update={"outcome": "ALLOW", "checks": checks, "one_pass": fake_pass})
+def resolve_approval(decision_id: str, req: ApprovalRequest, settings: SettingsDep, conn: ConnDep) -> Decision | JSONResponse:
+    try:
+        return approvals.resolve(conn, decision_id=decision_id, approve=req.approve, settings=settings, now=utc_now())
+    except approvals.ApprovalError as e:
+        return api_error(e.status, e.error, e.detail)
