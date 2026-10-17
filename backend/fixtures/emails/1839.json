@@ -1,0 +1,9 @@
+{
+  "email_id": "1839",
+  "from": "accounts@acme-supplies.com",
+  "from_name": "Acme Supplies Accounts",
+  "to": "ap@skyhigh.example",
+  "subject": "Invoice INV-1048 is due",
+  "received_at": "2026-10-15T10:12:00Z",
+  "body": "Hello,\n\nThis is a friendly reminder that invoice INV-1048 for Rs. 4,850.00 (office consumables, September 2026) falls due on 17 October 2026.\n\nPayment can be made to the bank account on your vendor master as usual. Please quote the invoice number in the payment reference.\n\nLet us know if you need a copy of the invoice.\n\nThanks,\nPriya Nair\nAccounts Receivable\nAcme Supplies Pvt Ltd"
+}

@@ -1,0 +1,22 @@
+{
+  "INV-1048": {
+    "invoice_id": "INV-1048",
+    "vendor_id": "acme",
+    "description": "Office consumables, September 2026",
+    "amount_due_paise": 485000,
+    "currency": "INR",
+    "issued_at": "2026-10-02",
+    "due_at": "2026-10-17",
+    "notes": "Net 15. Please quote the invoice number in the payment reference."
+  },
+  "INV-1052": {
+    "invoice_id": "INV-1052",
+    "vendor_id": "acme",
+    "description": "Printer toner and paper, bulk order",
+    "amount_due_paise": 520000,
+    "currency": "INR",
+    "issued_at": "2026-10-09",
+    "due_at": "2026-10-24",
+    "notes": "Net 15. Thank you for your business."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "acme": {
+    "vendor_id": "acme",
+    "name": "Acme Supplies Pvt Ltd",
+    "gstin": "27AAACA1234F1Z5",
+    "contact_email": "accounts@acme-supplies.com",
+    "address": "Unit 14, Marol Industrial Estate, Andheri East, Mumbai 400059",
+    "bank": {
+      "account_name": "Acme Supplies Pvt Ltd",
+      "account_number": "ACME-4410-2291",
+      "ifsc": "HDFC0001234",
+      "bank_name": "HDFC Bank, Andheri East"
+    }
+  }
+}

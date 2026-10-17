@@ -1,0 +1,6 @@
+# Attack + benign cases (CLAUDE.md §10). Filled in during Phase 6.
+- id: A01
+  category: payee_swap_email
+  scenario: hero_attack
+  expect_gated: BLOCK
+  expect_baseline: ALLOW   # i.e. attacker gets paid

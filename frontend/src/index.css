@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+html {
+  font-size: 18px; /* projector-readable baseline */
+}

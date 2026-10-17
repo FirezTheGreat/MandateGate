@@ -1,0 +1,9 @@
+{
+  "email_id": "1845",
+  "from": "newsletter@finops-weekly.com",
+  "from_name": "FinOps Weekly",
+  "to": "ap@skyhigh.example",
+  "subject": "5 ways to speed up your month-end close",
+  "received_at": "2026-10-16T06:00:00Z",
+  "body": "This week in FinOps Weekly:\n\n1. Automate bank reconciliations with rules, not spreadsheets.\n2. Close sub-ledgers on a fixed calendar.\n3. Standardise accrual templates across teams.\n4. Track open purchase orders weekly, not monthly.\n5. Review vendor master changes with a second approver.\n\nRead the full issue on our website. You are receiving this because you subscribed to FinOps Weekly. Unsubscribe any time."
+}
