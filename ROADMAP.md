@@ -36,7 +36,7 @@ Tasks
 3. Write `frontend/src/types.ts` mirroring them.
 4. Fixtures: `vendors.json`, `invoices.json`, emails 1839/1842/1845, scenarios `happy`, `hero_attack`, `step_up`.
 5. Stub every route in CLAUDE.md §7 returning hard-coded example responses (so frontend can start immediately).
-6. `db.py` schema: `mandates, tokens, sessions, tool_calls, values, decisions, passes, approvals, events` (gate); `used_nonces, ledger` (payment service).
+6. `db.py` schema: `mandates, tokens, sessions, tool_calls, value_records, decisions, passes, approvals, events` (gate); `used_nonces, ledger` (payment service).
 
 Acceptance
 - `make dev` starts gate, payment service, frontend without errors.
@@ -61,7 +61,7 @@ Goal: the trust primitives are correct and tested in isolation.
 Tasks
 1. `crypto.py`: `canonical_json`, `sign(key, obj)`, `verify(key, obj, sig)`, `new_nonce`, `new_id(prefix)`.
 2. `mandate.py`: `create_mandate(...)`, `verify_mandate(m)` (signature + expiry).
-3. `delegation.py`: `mint_root(mandate_id)`, `attenuate(token, caveats)`, `verify_chain(token)`, `evaluate(caveats, ctx)`, strict caveat parser, `detect_escalation(caveats)`.
+3. `delegation.py`: `mint_root(mandate_id)`, `attenuate(token, caveats)`, `verify_chain(token)`, `evaluate(caveats, ctx)` (non-amount caveats), `amount_limit(caveats)` (tightest `max_amount_paise` bound, feeds the step-up check), strict caveat parser, `detect_escalation(caveats)`.
 4. `passes.py`: `issue_pass(decision, proposal)` with TTL.
 5. `payment_service/`: `verify.py` (sig → exp → field equality → atomic nonce burn), `POST /pay`, `GET /ledger`, `POST /reset`.
 6. Wire `POST /mandates` and `POST /delegate` to real logic.
@@ -69,7 +69,8 @@ Tasks
 Acceptance (tests must exist and pass)
 - Tampering any mandate field → verify fails.
 - Attenuated token verifies; removing or editing any caveat → verify fails; reordering → fails.
-- Appending a looser amount caveat still enforces the original bound and `detect_escalation` flags it.
+- Appending a looser amount caveat still enforces the original bound (`amount_limit` returns the tighter one) and `detect_escalation` flags it.
+- A malformed amount caveat (e.g. `max_amount_paise <= 4850.5`) fails closed.
 - Unknown caveat string → evaluate fails closed.
 - Pass with altered amount/payee → 403 field_mismatch; altered sig → 401; reused → 409; expired → 401; no pass → 401.
 - Valid pass → 200 receipt, ledger row written.
@@ -92,7 +93,7 @@ Goal: the gate can execute tools, remember where every value came from, and make
 Tasks
 1. `provenance.py`: `normalize(s)`, `walk_leaves(obj)`, `extract_identifiers(text)` (regex for account-like tokens in free text), `record_values(session, tool_call, result, source_type, source_ref)`, `lookup(session, raw) -> list[ValueRecord]`.
 2. `broker.py`: tool registry mapping each tool → (handler, source_type, trust). `list_inbox`/`read_email` → `email`/untrusted; `get_vendor` → `vendor_registry`/trusted; `get_invoice` → `invoice_db`/trusted (but its free-text `notes` field is recorded as `untrusted` with `source_ref=invoice:<id>#notes`). Every call: verify token + evaluate caveats for `tool=<name>` → run → record values → emit event → return result.
-3. `policy.py`: `decide(proposal, ctx) -> Decision` per CLAUDE.md §6 check order. Pure; ctx is pre-loaded data (mandate, token verification result, value records, invoice). Report all checks. Baseline mode skips provenance checks.
+3. `policy.py`: `decide(proposal, ctx) -> Decision` per CLAUDE.md §6 check order. Pure; ctx is pre-loaded data (mandate, token verification result, value records, invoice). Report all checks in `CHECK_ORDER`. Baseline mode reports provenance checks as `skipped`.
 4. `routes/proposals.py`: load ctx, call `decide`, persist, issue pass on ALLOW, enqueue on STEP_UP, emit events. Wrap in try/except → BLOCK on any exception.
 5. `/admin/mode`, `/admin/reset`.
 
@@ -158,7 +159,7 @@ Tasks
 1. `approvals.py` + routes: list pending, approve → issue pass, deny → BLOCK. Approval expires with mandate.
 2. `tracer.py`: `build_trace(decision_id) -> {nodes, edges}`. Nodes: source (vendor registry / email / invoice), tool_call (agent + tool), proposal, decision. Edges: `source → tool_call` (value returned), `tool_call → proposal` (value used, for each critical field matched by normalized lookup), `proposal → decision`. Mark nodes/edges on the failing path with `"status": "bad"`. Include for each critical field which sources contained it.
 3. `events.py`: in-process pub/sub; `/events/stream` SSE emits `tool_call`, `value_recorded` (critical ones only), `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment`.
-4. Payment service notifies gate (`POST /internal/payment-event`) or gate polls ledger, so `payment` events appear in the feed.
+4. Payment service notifies gate (`POST /internal/payment-event`, authenticated with an HMAC header keyed by `PASS_KEY`) so `payment` events appear in the feed.
 
 Acceptance
 - Trace for the hero BLOCK contains path `email:1842 → finance:read_email → proposal(EVE-777) → BLOCK`, all marked bad; vendor registry path present and marked good.

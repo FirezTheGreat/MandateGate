@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 );
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls (session_id);
 
--- Provenance store. "values" is an SQL keyword, so it is always quoted.
-CREATE TABLE IF NOT EXISTS "values" (
+-- Provenance store (one row per recorded leaf value of every tool result).
+CREATE TABLE IF NOT EXISTS value_records (
     value_id     TEXT PRIMARY KEY,
     session_id   TEXT NOT NULL,
     raw          TEXT NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS "values" (
     agent_id     TEXT NOT NULL,
     ts           TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_values_lookup ON "values" (session_id, normalized);
+CREATE INDEX IF NOT EXISTS idx_value_records_lookup ON value_records (session_id, normalized);
 
 CREATE TABLE IF NOT EXISTS decisions (
     decision_id TEXT PRIMARY KEY,
@@ -121,7 +121,17 @@ CREATE TABLE IF NOT EXISTS ledger (
 );
 """
 
-GATE_TABLES = ("mandates", "tokens", "sessions", "tool_calls", "values", "decisions", "passes", "approvals", "events")
+GATE_TABLES = (
+    "mandates",
+    "tokens",
+    "sessions",
+    "tool_calls",
+    "value_records",
+    "decisions",
+    "passes",
+    "approvals",
+    "events",
+)
 PAYMENT_TABLES = ("used_nonces", "ledger")
 
 

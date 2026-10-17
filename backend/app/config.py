@@ -1,6 +1,7 @@
 """Environment-driven settings for the gate and payment service.
 
 Read lazily via `load_settings()` (not at import time) so tests can override env vars.
+Fails closed: missing, placeholder, or short keys refuse to start the service.
 """
 
 import os
@@ -12,6 +13,14 @@ from app.models import GateMode
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = BACKEND_DIR / "fixtures"
 DATA_DIR = BACKEND_DIR / "data"
+
+KEY_NAMES = ("MANDATE_KEY", "ROOT_KEY", "PASS_KEY")
+PLACEHOLDER_PREFIX = "change-me"
+MIN_KEY_CHARS = 32
+
+
+class ConfigError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -27,14 +36,24 @@ class Settings:
     pay_db_path: Path
 
 
+def _require_key(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value or value.startswith(PLACEHOLDER_PREFIX) or len(value) < MIN_KEY_CHARS:
+        raise ConfigError(
+            f"{name} is missing, a placeholder, or shorter than {MIN_KEY_CHARS} chars. "
+            "Run `make setup` to generate keys into .env."
+        )
+    return value
+
+
 def load_settings() -> Settings:
     mode = os.environ.get("GATE_MODE", "gated")
     if mode not in ("gated", "baseline"):
         mode = "gated"  # fail closed: unknown mode → the protected one
     return Settings(
-        mandate_key=os.environ.get("MANDATE_KEY", ""),
-        root_key=os.environ.get("ROOT_KEY", ""),
-        pass_key=os.environ.get("PASS_KEY", ""),
+        mandate_key=_require_key("MANDATE_KEY"),
+        root_key=_require_key("ROOT_KEY"),
+        pass_key=_require_key("PASS_KEY"),
         pass_ttl_seconds=int(os.environ.get("PASS_TTL_SECONDS", "120")),
         gate_mode=mode,  # type: ignore[arg-type]
         gate_url=os.environ.get("GATE_URL", "http://localhost:8000"),

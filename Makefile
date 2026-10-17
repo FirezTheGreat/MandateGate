@@ -11,7 +11,7 @@ AGENT ?= llm
 setup:
 	cd backend && uv sync
 	cd frontend && npm install
-	uv run --no-project python -c "import os, shutil; os.path.exists('.env') or shutil.copyfile('.env.example', '.env')"
+	uv run --no-project python backend/scripts/init_env.py
 
 gate:
 	cd backend && uv run --env-file ../.env uvicorn app.main:app --port 8000 --reload --reload-dir app

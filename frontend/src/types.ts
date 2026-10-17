@@ -22,6 +22,19 @@ export type EventType =
   | "escalation_attempt"
   | "suspicious_input"
   | "payment";
+/** "skipped": the check did not run (baseline mode skips payee/amount provenance). */
+export type CheckStatus = "pass" | "fail" | "skipped";
+export type AgentMode = "llm" | "scripted";
+
+/** Report order == evaluation order. Decisions list checks in exactly this order. */
+export const CHECK_ORDER: readonly CheckName[] = [
+  "mandate_valid",
+  "delegation_chain",
+  "invoice_matches_mandate",
+  "payee_provenance",
+  "amount_provenance",
+  "amount_within_limit",
+];
 
 /** Integer paise. ₹4,850 = 485000. Never a float. */
 export type Paise = number;
@@ -124,9 +137,20 @@ export interface PaymentProposal {
   memo?: string;
 }
 
+/** The proposal as recorded on a Decision (no delegation token: it is a bearer credential). */
+export interface ProposalSummary {
+  agent_id: string;
+  invoice_id: string;
+  vendor_id: string;
+  payee_account: string;
+  amount_paise: Paise;
+  currency: Currency;
+  memo: string;
+}
+
 export interface CheckResult {
   check: CheckName;
-  passed: boolean;
+  status: CheckStatus;
   detail?: string | null;
   required?: string | null;
   found?: string[] | null;
@@ -147,9 +171,14 @@ export interface OnePass {
 
 export interface Decision {
   decision_id: string;
+  session_id: string;
+  mandate_id: string | null;
+  mode: GateMode;
+  created_at: string;
+  proposal: ProposalSummary;
   outcome: Outcome;
-  checks: CheckResult[];
-  pass: OnePass | null;
+  checks: CheckResult[]; // always all six, in CHECK_ORDER
+  one_pass: OnePass | null;
   trace_available: boolean;
 }
 
@@ -180,7 +209,7 @@ export interface Payment {
 }
 
 export interface PayRequest {
-  pass: OnePass | null;
+  one_pass: OnePass | null;
   payment: Payment;
 }
 
@@ -257,6 +286,40 @@ export interface ModeState {
 export interface OkResponse {
   ok: boolean;
   detail?: string | null;
+}
+
+export interface RunScenarioRequest {
+  scenario: string; // ^[a-z0-9_]{1,64}$
+  agent?: AgentMode;
+}
+
+export interface RunScenarioStarted {
+  session_id: string;
+  scenario: string;
+  mode: GateMode;
+  agent: AgentMode;
+}
+
+// --- attack suite results (GET /attacks/results)
+
+export interface AttackCaseResult {
+  id: string;
+  category: string;
+  scenario: string | null;
+  mode: GateMode;
+  expected: Outcome;
+  outcomes: Outcome[];
+  attacker_paid_runs: number;
+  runs: number;
+}
+
+export interface AttackResults {
+  generated_at: string;
+  total_cases: number;
+  baseline_asr: number; // rate 0..1
+  gated_asr: number;
+  benign_fpr: number;
+  cases: AttackCaseResult[];
 }
 
 export interface ErrorResponse {

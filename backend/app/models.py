@@ -38,6 +38,18 @@ EventType = Literal[
     "suspicious_input",
     "payment",
 ]
+CheckStatus = Literal["pass", "fail", "skipped"]  # "skipped": not run (baseline mode skips checks 4–5)
+AgentMode = Literal["llm", "scripted"]
+
+# Report order == evaluation order (CLAUDE.md §6). Decisions list checks in exactly this order.
+CHECK_ORDER: tuple[CheckName, ...] = (
+    "mandate_valid",
+    "delegation_chain",
+    "invoice_matches_mandate",
+    "payee_provenance",
+    "amount_provenance",
+    "amount_within_limit",
+)
 
 # Integer paise only. strict=True rejects 4850.0 and "485000".
 Paise = Annotated[int, Field(strict=True, ge=0)]
@@ -129,7 +141,7 @@ class ToolCallResult(Contract):
 
 
 class ValueRecord(Contract):
-    """One row of the gate's provenance store (SQLite `values`)."""
+    """One row of the gate's provenance store (SQLite `value_records`)."""
 
     value_id: str
     session_id: str
@@ -161,9 +173,22 @@ class PaymentProposal(Contract):
     memo: str = Field(default="", max_length=2000)  # display only, never parsed
 
 
+class ProposalSummary(Contract):
+    """The proposal as recorded on a Decision. Omits the delegation token, which is a
+    bearer credential and must never be echoed back through history/dashboard APIs."""
+
+    agent_id: str
+    invoice_id: str
+    vendor_id: str
+    payee_account: str
+    amount_paise: Paise
+    currency: Currency
+    memo: str = ""
+
+
 class CheckResult(Contract):
     check: CheckName
-    passed: bool
+    status: CheckStatus
     detail: str | None = None
     required: str | None = None
     found: list[str] | None = None
@@ -185,13 +210,15 @@ class OnePass(Contract):
 
 
 class Decision(Contract):
-    # JSON key is "pass" (a Python keyword), so the attribute is `pass_`.
-    model_config = ConfigDict(extra="forbid", validate_by_name=True, validate_by_alias=True, serialize_by_alias=True)
-
     decision_id: str
+    session_id: str
+    mandate_id: str | None  # None when the proposal referenced no loadable mandate (→ BLOCK)
+    mode: GateMode
+    created_at: str
+    proposal: ProposalSummary
     outcome: Outcome
-    checks: list[CheckResult]
-    pass_: OnePass | None = Field(default=None, alias="pass")
+    checks: list[CheckResult]  # always all six, in CHECK_ORDER
+    one_pass: OnePass | None = None
     trace_available: bool
 
 
@@ -229,9 +256,7 @@ class Payment(Contract):
 class PayRequest(Contract):
     """POST /pay on the payment service. A missing pass → 401 missing_pass (not 422)."""
 
-    model_config = ConfigDict(extra="forbid", validate_by_name=True, validate_by_alias=True, serialize_by_alias=True)
-
-    pass_: OnePass | None = Field(default=None, alias="pass")
+    one_pass: OnePass | None = None
     payment: Payment
 
 
@@ -317,6 +342,46 @@ class ModeState(Contract):
 class OkResponse(Contract):
     ok: bool
     detail: str | None = None
+
+
+class RunScenarioRequest(Contract):
+    """POST /admin/run-scenario. Runs in the gate's current mode (see /admin/mode).
+    The name is passed to a subprocess, hence the strict pattern."""
+
+    scenario: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    agent: AgentMode = "scripted"
+
+
+class RunScenarioStarted(Contract):
+    session_id: str
+    scenario: str
+    mode: GateMode
+    agent: AgentMode
+
+
+# --------------------------------------------------------------------------- attack suite results
+
+
+class AttackCaseResult(Contract):
+    id: str  # "A01"
+    category: str  # "payee_swap_email", ..., "benign"
+    scenario: str | None  # None for protocol-level cases (tamper, replay, bypass)
+    mode: GateMode
+    expected: Outcome
+    outcomes: list[Outcome]  # one per run (LLM cases run 3x)
+    attacker_paid_runs: int
+    runs: int
+
+
+class AttackResults(Contract):
+    """attacks/results.json, served by GET /attacks/results."""
+
+    generated_at: str
+    total_cases: int
+    baseline_asr: float  # attack success rate, 0..1 (a rate, not money)
+    gated_asr: float
+    benign_fpr: float
+    cases: list[AttackCaseResult]
 
 
 class ErrorResponse(Contract):

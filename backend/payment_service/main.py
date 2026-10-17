@@ -40,7 +40,7 @@ install_error_handlers(app)
 def pay(req: PayRequest) -> JSONResponse:
     # STUB (Phase 0): refuses everything. Phase 1 replaces this with verify.py:
     # sig → exp → exact field match → atomic nonce burn → ledger → receipt.
-    if req.pass_ is None:
+    if req.one_pass is None:
         return api_error(401, "missing_pass", "a one-time pass is required")
     return api_error(503, "not_implemented", "pass verification lands in Phase 1; refusing to pay")
 

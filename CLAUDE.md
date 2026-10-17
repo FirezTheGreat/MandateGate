@@ -37,7 +37,7 @@ breaking one, stop and flag it.
 3. **Unknown origin = untrusted.** A critical value that appears in no recorded tool output is treated as untrusted → BLOCK.
 4. **Payment service never pays without a valid pass.** No debug bypass, no "skip verification" flag in the payment service. Baseline/unprotected mode is implemented in the *gate* (it issues passes without the provenance check), not by weakening the payment service.
 5. **Passes are single-use, short-lived (120s), and bound to exact fields.** Any field mismatch, expired pass, reused nonce, or bad signature → reject.
-6. **Delegation caveats are conjunctive.** All caveats in the chain must hold. A child can append caveats; it can never remove or replace one (the HMAC chain breaks).
+6. **Delegation caveats are conjunctive.** All caveats in the chain must hold. A child can append caveats; it can never remove or replace one (the HMAC chain breaks). Amount caveats are enforced as the tightest limit in the chain; going over it requires human approval (STEP_UP, §6).
 7. **Fail closed.** Any exception, missing record, parse error, or ambiguity in the decision path → `BLOCK` with a reason. Never default to ALLOW.
 8. **Money is integer paise.** Never floats. `₹4,850 = 485000`.
 9. **Constant-time comparison** for all signatures (`hmac.compare_digest`).
@@ -123,7 +123,8 @@ mandategate/
 │   │   ├── tracer.py             # build attack trace graph for a decision
 │   │   ├── events.py             # in-process event bus → SSE
 │   │   └── routes/               # mandates.py, tools.py, proposals.py, approvals.py,
-│   │                             # decisions.py, trace.py, events.py, admin.py
+│   │                             # decisions.py, trace.py, events.py, admin.py,
+│   │                             # attacks.py, internal.py
 │   ├── payment_service/          # SEPARATE FastAPI app, port 8001
 │   │   ├── main.py               # POST /pay, GET /ledger, POST /reset
 │   │   └── verify.py             # pass verification + nonce burn
@@ -202,9 +203,10 @@ All money in paise (int). All timestamps ISO-8601 UTC strings. IDs are prefixed 
   - `max_amount_paise <= N`
   - `invoice_id = X`
   - `expires_before <iso>`
-- Escalation detection: if a child appends `max_amount_paise <= N` with N greater than an earlier bound, it has no effect (conjunction) but the gate records an `escalation_attempt` event for the dashboard.
+- **Amount caveats are a limit, not a gate.** `evaluate()` parses every caveat strictly (a malformed amount caveat still fails), but it does not decide `max_amount_paise` caveats. Instead `amount_limit(caveats) -> int | None` returns the **tightest** (minimum) bound in the chain. Policy enforces `effective_limit = min(mandate.max_amount_paise, amount_limit(chain))` in `amount_within_limit`, so going over it is a `STEP_UP` (the human decides), never a silent ALLOW and never a delegation BLOCK. Conjunction still holds because the minimum can only shrink.
+- Escalation detection: if a child appends `max_amount_paise <= N` with N greater than an earlier bound, it has no effect (the minimum wins) but the gate records an `escalation_attempt` event for the dashboard.
 
-### Provenance value record (SQLite `values`)
+### Provenance value record (SQLite `value_records`)
 | column | meaning |
 |---|---|
 | `value_id` | `val_...` |
@@ -244,30 +246,39 @@ Any extra fields (e.g. `source`, `trusted`) are rejected by Pydantic (`extra="fo
 ```json
 {
   "decision_id": "dec_...",
+  "session_id": "ses_...",
+  "mandate_id": "mdt_... | null",
+  "mode": "gated | baseline",
+  "created_at": "iso",
+  "proposal": {"agent_id": "finance", "invoice_id": "INV-1048", "vendor_id": "acme",
+               "payee_account": "EVE-777", "amount_paise": 485000, "currency": "INR", "memo": "..."},
   "outcome": "ALLOW | BLOCK | STEP_UP",
   "checks": [
-    {"check": "mandate_valid", "passed": true, "detail": "..."},
-    {"check": "delegation_chain", "passed": true, "detail": "..."},
-    {"check": "invoice_matches_mandate", "passed": true, "detail": "..."},
-    {"check": "amount_within_limit", "passed": true, "detail": "485000 <= 500000"},
-    {"check": "payee_provenance", "passed": false,
+    {"check": "mandate_valid", "status": "pass", "detail": "..."},
+    {"check": "delegation_chain", "status": "pass", "detail": "..."},
+    {"check": "invoice_matches_mandate", "status": "pass", "detail": "..."},
+    {"check": "payee_provenance", "status": "fail",
      "required": "vendor_registry:acme", "found": ["email:1842 (untrusted)"]},
-    {"check": "amount_provenance", "passed": true, "detail": "invoice:INV-1048"}
+    {"check": "amount_provenance", "status": "pass", "detail": "invoice:INV-1048"},
+    {"check": "amount_within_limit", "status": "pass", "detail": "485000 <= 500000"}
   ],
-  "pass": null,
+  "one_pass": null,
   "trace_available": true
 }
 ```
+- `proposal` is a `ProposalSummary`: the proposal **without its delegation token**. Tokens are bearer credentials and are never echoed back through history or dashboard APIs.
+- `checks[].status` is `pass`, `fail` or `skipped`. `skipped` means the check did not run (baseline mode) and counts as neither pass nor fail.
 
 ### Check order and rules (`policy.py`, pure function `decide(proposal, ctx) -> Decision`)
+Report order equals evaluation order, always all six (`CHECK_ORDER` in `models.py`):
 1. `mandate_valid` — signature OK, not expired.
-2. `delegation_chain` — token chain verifies, belongs to this mandate, all caveats hold for `{agent, tool: "propose_payment", amount, invoice_id}`.
+2. `delegation_chain` — token chain verifies, belongs to this mandate, and all **non-amount** caveats hold for `{agent, tool: "propose_payment", invoice_id}` (amount caveats feed check 6).
 3. `invoice_matches_mandate` — proposal invoice_id and vendor_id equal mandate constraints.
 4. `payee_provenance` — `normalize(payee_account)` must match a value record with `source_type=vendor_registry` **and** `source_ref=vendor:<mandate.vendor_id>`. If found only in untrusted sources → fail with those refs. If found nowhere → fail "unknown origin".
 5. `amount_provenance` — amount must equal the invoice's `amount_due_paise` as recorded from `invoice_db`.
-6. `amount_within_limit` — if amount > `max_amount_paise` and all other checks pass → `STEP_UP`; else continue.
+6. `amount_within_limit` — `effective_limit = min(mandate.max_amount_paise, amount_limit(token chain))`. Amount > effective_limit → status `fail`, which yields `STEP_UP` if checks 1–5 pass.
 
-Outcome: any of 1–5 fails → `BLOCK`. All pass and within limit → `ALLOW` + pass. All pass but over limit → `STEP_UP` (human approves in dashboard → pass issued; deny → `BLOCK`).
+Outcome: any of 1–5 `fail` → `BLOCK`. All pass and within limit → `ALLOW` + pass. 1–5 pass but over limit → `STEP_UP` (human approves in dashboard → pass issued; deny → `BLOCK`).
 Always run and report **all** checks (don't short-circuit the report) so the dashboard shows the full checklist.
 
 ### One-time pass
@@ -285,7 +296,7 @@ Always run and report **all** checks (don't short-circuit the report) so the das
   "sig": "hex HMAC(PASS_KEY, canonical(pass without sig))"
 }
 ```
-Payment service `POST /pay {pass, payment}`: verify sig → check exp → check `payment` fields exactly equal pass fields → atomically insert nonce into `used_nonces` (UNIQUE; conflict → 409 replay) → write ledger → return receipt. Errors: `401 bad_signature`, `401 expired`, `403 field_mismatch`, `409 replay`, `401 missing_pass`.
+Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → check `payment` fields exactly equal pass fields → atomically insert nonce into `used_nonces` (UNIQUE; conflict → 409 replay) → write ledger → return receipt. Errors: `401 bad_signature`, `401 expired`, `403 field_mismatch`, `409 replay`, `401 missing_pass`.
 
 ---
 
@@ -304,14 +315,17 @@ Payment service `POST /pay {pass, payment}`: verify sig → check exp → check 
 | GET | `/decisions`, `/decisions/{id}` | History |
 | GET | `/trace/{decision_id}` | Trace graph `{nodes, edges}` for React Flow |
 | GET | `/sessions/{id}/events` | Ordered event log |
-| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `payment` |
-| POST | `/admin/mode` | `{mode: "gated" \| "baseline"}` |
+| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment` |
+| GET, POST | `/admin/mode` | Read / set `{mode: "gated" \| "baseline"}` |
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
+| POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent}`; spawns `agents.run_scenario` in a subprocess in the current mode. `scenario` must match `^[a-z0-9_]{1,64}$` |
+| GET | `/attacks/results` | `attacks/results.json` (`AttackResults`) for the Attacks page |
+| POST | `/internal/payment-event` | Payment service → gate: a `Receipt`, published as a `payment` event. Display only. Must be authenticated (HMAC header with `PASS_KEY`) by Phase 4 so agents can't inject fake payments into the feed |
 
 Brokered tools: `list_inbox`, `read_email(email_id)`, `get_invoice(invoice_id)`, `get_vendor(vendor_id)`.
 `propose_payment` is the agent-facing name for `POST /proposals`.
 
-**Baseline mode** (for the "without MandateGate" demo): gate runs only checks 1, 2, 3, 6 (identity, tool, invoice, limit — i.e. what normal RBAC would do) and skips provenance. This reproduces "every normal check passes, money still goes to the attacker." It is a gate setting; the payment service is unchanged.
+**Baseline mode** (for the "without MandateGate" demo): gate runs only checks 1, 2, 3, 6 (identity, tool, invoice, limit — i.e. what normal RBAC would do). Checks 4–5 are reported with status `skipped`. This reproduces "every normal check passes, money still goes to the attacker." It is a gate setting; the payment service is unchanged.
 
 ### Payment service (port 8001)
 `POST /pay`, `GET /ledger`, `POST /reset`.
@@ -396,7 +410,7 @@ Keep visuals simple and legible. No animations beyond highlight transitions.
 ## 12. Commands
 
 ```bash
-make setup       # uv sync (backend), npm install (frontend), copy .env.example → .env
+make setup       # uv sync (backend), npm install (frontend), .env from .env.example with fresh random keys
 make gate        # uvicorn app.main:app --port 8000 --reload
 make pay         # uvicorn payment_service.main:app --port 8001 --reload
 make web         # vite dev on 5173
@@ -422,6 +436,7 @@ LLM_MODEL=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 ```
+Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is missing, still a `change-me` placeholder, or under 32 chars (`config.load_settings`). `make setup` runs `backend/scripts/init_env.py`, which creates `.env` and replaces placeholder keys with `secrets.token_hex(32)`. Real keys already in `.env` are left alone.
 
 ---
 
@@ -447,7 +462,7 @@ OPENAI_API_KEY=
 
 ## 15. Status (keep updated)
 
-- [x] Phase 0 — scaffold + contracts (`make setup && make dev` boots all three; `make test` green, 13 smoke tests)
+- [x] Phase 0 — scaffold + contracts (`make setup && make dev` boots all three; `make test` green, 24 smoke tests)
 - [ ] Phase 1 — crypto, mandate, delegation, passes, payment service
 - [ ] Phase 2 — broker, provenance, policy, decisions
 - [ ] Phase 3 — agents (scripted + LLM), scenarios end-to-end
@@ -458,7 +473,10 @@ OPENAI_API_KEY=
 
 What works (Phase 0):
 - `models.py` holds every §6 contract (all models `extra="forbid"`, paise `strict` int), mirrored in `frontend/src/types.ts`.
-  `Decision.pass` / `PayRequest.pass` use attribute `pass_` with JSON alias `"pass"`.
+- Contract revision after Phase 0 review: amount caveats → step-up limit (`amount_limit`, min of chain); Decision gains
+  session_id/mandate_id/mode/created_at/proposal (token-free `ProposalSummary`); `CheckResult.status` pass|fail|skipped
+  replaces `passed`; `pass` → `one_pass`; table `values` → `value_records`; check report order pinned (`CHECK_ORDER`);
+  new routes GET /admin/mode, /admin/run-scenario, /attacks/results, /internal/payment-event; placeholder keys refused.
 - `db.py`: gate + payment-service schemas, created at app startup (`GATE_DB_PATH` / `PAY_DB_PATH`, default `backend/data/`).
 - Fixtures: vendors, invoices (INV-1048, INV-1052), emails 1839/1842/1845, scenarios happy/hero_attack/step_up.
 - Frontend: Vite 8 + React 19 + TS 7 strict + Tailwind 4 + @xyflow/react; Live page renders `GET /decisions/dec_example`.
@@ -469,12 +487,12 @@ Stubs (all example data lives in `backend/app/stub_data.py`; delete pieces as re
   `POST /tools/{name}` serves fixture data with no token check and no provenance recording. Fake sigs are all zeros.
 - Payment service `POST /pay` refuses everything: 401 `missing_pass` without a pass, 503 `not_implemented` otherwise.
   `GET /ledger` returns one example row. `/reset` endpoints are no-ops.
+- `/admin/run-scenario` spawns nothing yet; `/attacks/results` returns example numbers; `/internal/payment-event`
+  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check).
 - Placeholder modules (docstring only): crypto, mandate, delegation, broker, provenance, policy, passes, approvals,
   tracer, events, payment_service/verify, all agents, attacks/run_suite, scripts/seed.
   `make scenario` / `make attacks` print "not implemented" and exit 1.
 
 Known issues:
 - Windows: `make` runs recipes via cmd.exe, so keep Makefile recipes to `cd x && cmd` (no cp/rm/export).
-- Open contract questions (undecided, contracts unchanged): (1) token caveat `max_amount_paise <= 500000` makes the
-  INV-1052 step-up fail `delegation_chain` → BLOCK, never STEP_UP; (2) `Decision` lacks session_id/mandate_id/mode/
-  created_at/proposal; (3) no "skipped" state for checks 4–5 in baseline mode.
+- None open on contracts.

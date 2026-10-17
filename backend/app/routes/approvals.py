@@ -23,7 +23,7 @@ def resolve_approval(decision_id: str, req: ApprovalRequest) -> Decision | JSONR
     verdict = "approved" if req.approve else "denied"
     limit_check = CheckResult(
         check="amount_within_limit",
-        passed=req.approve,
+        status="pass" if req.approve else "fail",
         detail=f"520000 > 500000, {verdict} by human",
     )
     checks = [limit_check if c.check == "amount_within_limit" else c for c in base.checks]
@@ -37,4 +37,4 @@ def resolve_approval(decision_id: str, req: ApprovalRequest) -> Decision | JSONR
             "amount_paise": 520000,
         }
     )
-    return base.model_copy(update={"outcome": "ALLOW", "checks": checks, "pass_": fake_pass})
+    return base.model_copy(update={"outcome": "ALLOW", "checks": checks, "one_pass": fake_pass})

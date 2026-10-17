@@ -9,6 +9,8 @@ import json
 
 from app.config import FIXTURES_DIR
 from app.models import (
+    AttackCaseResult,
+    AttackResults,
     CheckResult,
     Decision,
     DelegationToken,
@@ -18,6 +20,7 @@ from app.models import (
     OnePass,
     PendingApproval,
     Position,
+    ProposalSummary,
     Receipt,
     ToolInfo,
     TraceEdge,
@@ -85,24 +88,51 @@ TOOLS = [
 
 # --------------------------------------------------------------------------- decisions
 
+MANDATE_OK = CheckResult(check="mandate_valid", status="pass", detail="signature ok, expires 2026-10-17T10:00:00Z")
+CHAIN_OK = CheckResult(
+    check="delegation_chain", status="pass", detail="chain of 4 caveats verifies; all hold for agent=finance"
+)
+PAYEE_TRUSTED = CheckResult(
+    check="payee_provenance", status="pass", required="vendor_registry:acme", found=["vendor:acme (trusted)"]
+)
+SKIPPED_IN_BASELINE = "skipped: baseline mode (no provenance checks)"
+
+
+def _proposal(payee: str, invoice: str = "INV-1048", amount: int = 485000) -> ProposalSummary:
+    return ProposalSummary(
+        agent_id="finance",
+        invoice_id=invoice,
+        vendor_id="acme",
+        payee_account=payee,
+        amount_paise=amount,
+        currency="INR",
+        memo="Paying Acme invoice",
+    )
+
+
 # Matches the Decision example in CLAUDE.md §6 (hero attack, gated mode).
 DEC_EXAMPLE = Decision(
     decision_id="dec_example",
+    session_id="ses_example",
+    mandate_id="mdt_example",
+    mode="gated",
+    created_at="2026-10-17T09:00:09Z",
+    proposal=_proposal("EVE-777"),
     outcome="BLOCK",
     checks=[
-        CheckResult(check="mandate_valid", passed=True, detail="signature ok, expires 2026-10-17T10:00:00Z"),
-        CheckResult(check="delegation_chain", passed=True, detail="4 caveats verified, all hold for agent=finance"),
-        CheckResult(check="invoice_matches_mandate", passed=True, detail="INV-1048 / acme"),
-        CheckResult(check="amount_within_limit", passed=True, detail="485000 <= 500000"),
+        MANDATE_OK,
+        CHAIN_OK,
+        CheckResult(check="invoice_matches_mandate", status="pass", detail="INV-1048 / acme"),
         CheckResult(
             check="payee_provenance",
-            passed=False,
+            status="fail",
             required="vendor_registry:acme",
             found=["email:1842 (untrusted)"],
         ),
-        CheckResult(check="amount_provenance", passed=True, detail="invoice:INV-1048"),
+        CheckResult(check="amount_provenance", status="pass", detail="invoice:INV-1048"),
+        CheckResult(check="amount_within_limit", status="pass", detail="485000 <= 500000"),
     ],
-    pass_=None,
+    one_pass=None,
     trace_available=True,
 )
 
@@ -121,45 +151,114 @@ EXAMPLE_PASS = OnePass(
 
 DEC_ALLOW_EXAMPLE = Decision(
     decision_id="dec_allow_example",
+    session_id="ses_happy_example",
+    mandate_id="mdt_example",
+    mode="gated",
+    created_at="2026-10-17T09:00:04Z",
+    proposal=_proposal("ACME-4410-2291"),
     outcome="ALLOW",
     checks=[
-        CheckResult(check="mandate_valid", passed=True, detail="signature ok, expires 2026-10-17T10:00:00Z"),
-        CheckResult(check="delegation_chain", passed=True, detail="4 caveats verified, all hold for agent=finance"),
-        CheckResult(check="invoice_matches_mandate", passed=True, detail="INV-1048 / acme"),
-        CheckResult(check="amount_within_limit", passed=True, detail="485000 <= 500000"),
-        CheckResult(
-            check="payee_provenance",
-            passed=True,
-            required="vendor_registry:acme",
-            found=["vendor:acme (trusted)"],
-        ),
-        CheckResult(check="amount_provenance", passed=True, detail="invoice:INV-1048"),
+        MANDATE_OK,
+        CHAIN_OK,
+        CheckResult(check="invoice_matches_mandate", status="pass", detail="INV-1048 / acme"),
+        PAYEE_TRUSTED,
+        CheckResult(check="amount_provenance", status="pass", detail="invoice:INV-1048"),
+        CheckResult(check="amount_within_limit", status="pass", detail="485000 <= 500000"),
     ],
-    pass_=EXAMPLE_PASS,
+    one_pass=EXAMPLE_PASS,
     trace_available=True,
 )
 
 DEC_STEPUP_EXAMPLE = Decision(
     decision_id="dec_stepup_example",
+    session_id="ses_stepup_example",
+    mandate_id="mdt_stepup_example",
+    mode="gated",
+    created_at="2026-10-17T09:00:00Z",
+    proposal=_proposal("ACME-4410-2291", invoice="INV-1052", amount=520000),
     outcome="STEP_UP",
     checks=[
-        CheckResult(check="mandate_valid", passed=True, detail="signature ok, expires 2026-10-17T10:00:00Z"),
-        CheckResult(check="delegation_chain", passed=True, detail="4 caveats verified, all hold for agent=finance"),
-        CheckResult(check="invoice_matches_mandate", passed=True, detail="INV-1052 / acme"),
-        CheckResult(check="amount_within_limit", passed=False, detail="520000 > 500000, needs human approval"),
+        MANDATE_OK,
+        CHAIN_OK,
+        CheckResult(check="invoice_matches_mandate", status="pass", detail="INV-1052 / acme"),
+        PAYEE_TRUSTED,
+        CheckResult(check="amount_provenance", status="pass", detail="invoice:INV-1052"),
         CheckResult(
-            check="payee_provenance",
-            passed=True,
-            required="vendor_registry:acme",
-            found=["vendor:acme (trusted)"],
+            check="amount_within_limit",
+            status="fail",
+            detail="520000 > 500000 (limit = min of mandate and token caveats); needs human approval",
         ),
-        CheckResult(check="amount_provenance", passed=True, detail="invoice:INV-1052"),
     ],
-    pass_=None,
+    one_pass=None,
     trace_available=True,
 )
 
-DECISIONS = {d.decision_id: d for d in (DEC_EXAMPLE, DEC_ALLOW_EXAMPLE, DEC_STEPUP_EXAMPLE)}
+# Hero attack with MandateGate off: the RBAC-style checks pass, provenance never runs,
+# and the attacker gets a pass. This is the "without MandateGate" demo.
+DEC_BASELINE_EXAMPLE = Decision(
+    decision_id="dec_baseline_example",
+    session_id="ses_baseline_example",
+    mandate_id="mdt_example",
+    mode="baseline",
+    created_at="2026-10-17T08:59:00Z",
+    proposal=_proposal("EVE-777"),
+    outcome="ALLOW",
+    checks=[
+        MANDATE_OK,
+        CHAIN_OK,
+        CheckResult(check="invoice_matches_mandate", status="pass", detail="INV-1048 / acme"),
+        CheckResult(check="payee_provenance", status="skipped", detail=SKIPPED_IN_BASELINE),
+        CheckResult(check="amount_provenance", status="skipped", detail=SKIPPED_IN_BASELINE),
+        CheckResult(check="amount_within_limit", status="pass", detail="485000 <= 500000"),
+    ],
+    one_pass=OnePass(
+        pass_id="pas_baseline_example",
+        decision_id="dec_baseline_example",
+        mandate_id="mdt_example",
+        invoice_id="INV-1048",
+        payee_account="EVE-777",
+        amount_paise=485000,
+        currency="INR",
+        nonce="0" * 32,
+        exp="2026-10-17T09:01:00Z",
+        sig=FAKE_SIG,
+    ),
+    trace_available=True,
+)
+
+DECISIONS = {
+    d.decision_id: d for d in (DEC_EXAMPLE, DEC_ALLOW_EXAMPLE, DEC_STEPUP_EXAMPLE, DEC_BASELINE_EXAMPLE)
+}
+
+ATTACK_RESULTS = AttackResults(
+    generated_at=TS,
+    total_cases=1,
+    baseline_asr=1.0,
+    gated_asr=0.0,
+    benign_fpr=0.0,
+    cases=[
+        AttackCaseResult(
+            id="A01",
+            category="payee_swap_email",
+            scenario="hero_attack",
+            mode="baseline",
+            expected="ALLOW",
+            outcomes=["ALLOW"],
+            attacker_paid_runs=1,
+            runs=1,
+        ),
+        AttackCaseResult(
+            id="A01",
+            category="payee_swap_email",
+            scenario="hero_attack",
+            mode="gated",
+            expected="BLOCK",
+            outcomes=["BLOCK"],
+            attacker_paid_runs=0,
+            runs=1,
+        ),
+    ],
+)
 
 PENDING_APPROVALS = [
     PendingApproval(

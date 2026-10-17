@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import load_settings
 from app.db import init_gate_db
 from app.errors import install_error_handlers
-from app.routes import admin, approvals, decisions, events, mandates, proposals, tools, trace
+from app.routes import admin, approvals, attacks, decisions, events, internal, mandates, proposals, tools, trace
 
 DASHBOARD_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -29,5 +29,5 @@ app.add_middleware(
 )
 install_error_handlers(app)
 
-for module in (mandates, tools, proposals, approvals, decisions, trace, events, admin):
+for module in (mandates, tools, proposals, approvals, decisions, trace, events, admin, attacks, internal):
     app.include_router(module.router)
