@@ -299,7 +299,7 @@ def test_outcome_of_malformed_check_list_is_block() -> None:
 
 # --------------------------------------------------------------------------- purity guard
 
-PURE_MODULES = ["policy.py", "provenance.py", "delegation.py", "crypto.py", "mandate.py", "passes.py", "clock.py"]
+PURE_MODULES = ["policy.py", "provenance.py", "delegation.py", "crypto.py", "mandate.py", "passes.py", "clock.py", "tracer.py"]
 FORBIDDEN_IMPORTS = {"sqlite3", "httpx", "os", "fastapi", "requests", "app.db", "anthropic", "openai", "subprocess", "socket"}
 
 

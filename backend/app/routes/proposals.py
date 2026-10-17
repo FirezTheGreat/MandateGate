@@ -78,7 +78,10 @@ def _persist(conn: sqlite3.Connection, p: PaymentProposal, d: Decision, ctx: pol
 
 
 def _emit_decision(conn: sqlite3.Connection, d: Decision, ts: str) -> None:
-    events.emit(conn, "decision", d.session_id, {
+    data = {
         "decision_id": d.decision_id, "outcome": d.outcome, "mode": d.mode,
         "failed": [c.check for c in d.checks if c.status == "fail"],
-    }, ts)
+    }
+    if d.outcome == "STEP_UP":
+        data["approval"] = "pending"  # the dashboard opens the ApprovalModal on this
+    events.emit(conn, "decision", d.session_id, data, ts)

@@ -347,14 +347,14 @@ Payment service `POST /pay {one_pass, payment}`: verify sig → check exp → ch
 | GET | `/approvals` | Pending STEP_UPs |
 | POST | `/approvals/{decision_id}` | `{approve: bool}` → Decision (+ pass) |
 | GET | `/decisions`, `/decisions/{id}` | History |
-| GET | `/trace/{decision_id}` | Trace graph `{nodes, edges}` for React Flow |
+| GET | `/trace/{decision_id}` | Trace graph `{nodes, edges, fields}` for React Flow. Columns source → tool_call → proposal → decision (x = col×280); status good/bad/warn/neutral; `fields` lists where `payee_account` and `amount_paise` appeared and whether each traces to its required trusted source |
 | GET | `/sessions/{id}/events` | Ordered event log (data shapes documented in `app/events.py`) |
-| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment` |
+| GET | `/events/stream` | SSE: `tool_call`, `value_recorded`, `proposal`, `decision`, `escalation_attempt`, `suspicious_input`, `payment`. `?session_id=` filters, `?after=<seq>` replays (0 = all), `Last-Event-ID` resumes; default is live-only. Message: `event: <type>`, `id: <seq>`, `data: <Event JSON>` |
 | GET, POST | `/admin/mode` | Read / set `{mode: "gated" \| "baseline"}` |
 | POST | `/admin/reset` | Wipe sessions/decisions, reseed fixtures |
 | POST | `/admin/run-scenario` | `{scenario, agent: "llm" \| "scripted"}` → `{session_id, scenario, mode, agent}`; spawns `agents.run_scenario` in a subprocess in the current mode. `scenario` must match `^[a-z0-9_]{1,64}$` |
 | GET | `/attacks/results` | `attacks/results.json` (`AttackResults`) for the Attacks page |
-| POST | `/internal/payment-event` | Payment service → gate: a `Receipt`, published as a `payment` event. Display only. Must be authenticated (HMAC header with `PASS_KEY`) by Phase 4 so agents can't inject fake payments into the feed |
+| POST | `/internal/payment-event` | Payment service → gate: a `PaymentEventReport` (paid or refused), published as a `payment` event. Display only. Requires `X-MandateGate-Signature` = HMAC(PASS_KEY, canonical body) and `sent_at` within 60s, else 401 (`bad_signature` / `stale`) |
 
 Brokered tools: `list_inbox`, `read_email(email_id)`, `get_invoice(invoice_id)`, `get_vendor(vendor_id)`.
 `propose_payment` is the agent-facing name for `POST /proposals`.
@@ -533,7 +533,7 @@ Both services refuse to start if `MANDATE_KEY`, `ROOT_KEY` or `PASS_KEY` is miss
 - [x] Phase 1 — crypto, mandate, delegation, passes, payment service
 - [x] Phase 2 — broker, provenance, policy, decisions, sessions, approvals (`make test` green: 279 tests)
 - [x] Phase 3 — agents (scripted + LLM), scenarios end-to-end (`make test` green: 328 tests; live LLM = Gemini via the OpenAI-compatible provider)
-- [ ] Phase 4 — tracer, SSE, payment events (approvals already done in Phase 2)
+- [x] Phase 4 — tracer, SSE, signed payment events (approvals were done in Phase 2) (`make test` green: 354 tests)
 - [ ] Phase 5 — dashboard
 - [ ] Phase 6 — attack suite + metrics
 - [ ] Phase 7 — hardening, polish, demo assets
@@ -589,10 +589,22 @@ What works (Phase 2):
   email:1842; happy → Acme paid; step-up → approve → ₹5,200 paid.
 
 Stubs (example data in `backend/app/stub_data.py`; delete pieces as real code lands):
-- `GET /trace/{id}` serves only the `dec_example` stub (real decisions have `trace_available: false` until Phase 4).
-- `GET /events/stream` replays canned events (Phase 4 wires SSE to the persisted events).
-- `/admin/run-scenario` spawns nothing yet; `/attacks/results` returns example numbers; `/internal/payment-event`
-  accepts receipts unauthenticated and drops them (Phase 4 must add the HMAC check).
+- `/admin/run-scenario` spawns nothing yet (Phase 5); `/attacks/results` returns example numbers (Phase 6).
+
+What works (Phase 4):
+- `tracer.py` (pure; in the purity guard): `build_trace(decision, tool_calls, records)`. Matches values by normalized
+  form (reformatted "E V E 777" still traces to email:1842). Field status uses the policy's own rules
+  (`policy.registered_payee_records`, `policy.amount_due_values`), in both modes, so a baseline payment to the attacker
+  is drawn red ("allowed in baseline mode: provenance not checked"). Untrusted sources that merely repeat a good value
+  (Rs. 4,850 in email 1839) are neutral, not bad. Every decision now has `trace_available: true`.
+- SSE (`routes/events.py`): DB-backed (polls the events table every 0.3s for seq > last), so it survives reloads, needs
+  no cross-thread signalling and supports `Last-Event-ID`. Chosen over an in-process bus for those reasons.
+- STEP_UP `decision` events carry `approval: "pending"` (the dashboard's cue for the ApprovalModal).
+- Payment service reports every attempt, paid or refused (missing_pass, bad_signature, expired, field_mismatch,
+  replay), signed with PASS_KEY, in a background thread; a notification failure never changes the payment outcome.
+- Verified live: `curl -N /events/stream` streamed tool_call ×11, value_recorded ×15, proposal ×2, decision ×2,
+  payment ×1 during a gated hero run + happy run; the blocked trace shows Email #1842 → read_email #1842 →
+  proposal(EVE-777) → BLOCK, all bad.
 - Placeholder modules (docstring only): tracer, attacks/run_suite. `make attacks` prints "not implemented" and exits 1.
 
 What works (Phase 3):

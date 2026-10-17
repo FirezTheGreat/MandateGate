@@ -39,4 +39,5 @@ def gate(env: Env) -> Iterator[TestClient]:
 @pytest.fixture
 def pay(env: Env) -> Iterator[TestClient]:
     with TestClient(pay_app) as client:
+        pay_app.state.notify = lambda _report: None  # no gate to notify in tests; test_payment_events wires one
         yield client

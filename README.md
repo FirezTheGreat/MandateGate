@@ -135,7 +135,7 @@ Built over 24 hours in phases; see [`ROADMAP.md`](ROADMAP.md). Live status is tr
 - [x] **Phase 1**: crypto, mandates, delegation tokens, one-time passes, real payment service
 - [x] **Phase 2**: tool broker, provenance tracking, decision engine, sessions, step-up approvals
 - [x] **Phase 3**: agents (Claude-powered finance agent + scripted fallback), end-to-end scenarios. Still to do: tune the scam email against the live model
-- [ ] Phase 4: approvals, attack tracer, live events (SSE)
+- [x] **Phase 4**: attack tracer, live event stream, signed payment events
 - [ ] Phase 5: dashboard
 - [ ] Phase 6: attack suite and metrics
 - [ ] Phase 7: hardening and demo assets
@@ -147,7 +147,7 @@ The gate is real end to end over HTTP. Every tool call goes through the broker, 
 - Legit payments went through.
 - The ₹5,200 invoice waited for human approval.
 
-The agents are in place. A planner narrows the permission slip and hands the job to a Claude-powered accounts-payable agent, which works only through the gate's tools. There is also a scripted agent that does the same job without an LLM. The attack trace graph and the live event stream are still stubs (Phase 4).
+The agents are in place. A planner narrows the permission slip and hands the job to a Claude-powered accounts-payable agent, which works only through the gate's tools. There is also a scripted agent that does the same job without an LLM. The attack tracer draws the exact path a bad value took (Email #1842 → read_email → proposal → BLOCKED), and every event streams live to the dashboard.
 
 ## Repository layout
 

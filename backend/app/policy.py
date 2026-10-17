@@ -95,6 +95,26 @@ def _invoice_matches_mandate(p: PaymentProposal, ctx: PolicyContext) -> CheckRes
     return _pass(name, f"{p.invoice_id} / {p.vendor_id}")
 
 
+def registered_payee_records(records: tuple[ValueRecord, ...] | list[ValueRecord], payee: str, vendor: str) -> list[ValueRecord]:
+    """Trusted vendor-registry bank-account records for `vendor` that equal `payee` after normalisation.
+    The payee passes only if one of them also equals it exactly (raw). Shared with the tracer."""
+    n = normalize(payee)
+    return [
+        r for r in records
+        if r.source_type == "vendor_registry" and r.source_ref == f"vendor:{vendor}" and r.field_hint == PAYEE_FIELD
+        and r.trust == "trusted" and r.normalized == n
+    ]
+
+
+def amount_due_values(records: tuple[ValueRecord, ...] | list[ValueRecord], invoice: str) -> list[int]:
+    """Trusted amount_due_paise values recorded from the invoice DB for `invoice`. Shared with the tracer."""
+    return [
+        int(r.raw) for r in records
+        if r.source_type == "invoice_db" and r.source_ref == f"invoice:{invoice}" and r.field_hint == AMOUNT_FIELD
+        and r.trust == "trusted" and r.raw.isdigit()
+    ]
+
+
 def _payee_provenance(p: PaymentProposal, ctx: PolicyContext) -> CheckResult:
     name: CheckName = "payee_provenance"
     if ctx.mandate is None:
@@ -102,11 +122,7 @@ def _payee_provenance(p: PaymentProposal, ctx: PolicyContext) -> CheckResult:
     vendor = ctx.mandate.constraints.vendor_id
     required = f"vendor_registry:{vendor}"
     seen = matches(ctx.records, p.payee_account)
-    registered = [
-        r for r in seen
-        if r.source_type == "vendor_registry" and r.source_ref == f"vendor:{vendor}" and r.field_hint == PAYEE_FIELD
-        and r.trust == "trusted" and r.normalized == normalize(p.payee_account)
-    ]
+    registered = registered_payee_records(seen, p.payee_account, vendor)
     found = describe(seen)
     if any(r.raw == p.payee_account for r in registered):
         return _pass(name, f"matches vendor:{vendor} {PAYEE_FIELD}", required=required, found=found)
@@ -123,11 +139,7 @@ def _amount_provenance(p: PaymentProposal, ctx: PolicyContext) -> CheckResult:
         return _fail(name, "no mandate: invoice unknown")
     invoice = ctx.mandate.constraints.invoice_id
     required = f"invoice_db:{invoice}"
-    due = [
-        int(r.raw) for r in ctx.records
-        if r.source_type == "invoice_db" and r.source_ref == f"invoice:{invoice}" and r.field_hint == AMOUNT_FIELD
-        and r.trust == "trusted" and r.raw.isdigit()
-    ]
+    due = amount_due_values(ctx.records, invoice)
     if not due:
         return _fail(name, f"invoice {invoice} was not looked up this session; the amount has no trusted source", required=required, found=[])
     if p.amount_paise in due:
@@ -209,7 +221,7 @@ def decide(p: PaymentProposal, ctx: PolicyContext) -> Decision:
         outcome=outcome_of(checks),
         checks=checks,
         one_pass=None,
-        trace_available=False,  # Phase 4 (tracer) flips this
+        trace_available=True,  # GET /trace/{decision_id} rebuilds it from the session's records
     )
 
 
@@ -225,5 +237,5 @@ def fail_closed(p: PaymentProposal, *, decision_id: str, now: datetime, mode: Ga
         outcome="BLOCK",
         checks=[_fail(name, reason) for name in CHECK_ORDER],
         one_pass=None,
-        trace_available=False,
+        trace_available=True,
     )

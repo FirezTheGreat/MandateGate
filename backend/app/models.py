@@ -313,7 +313,7 @@ class Position(Contract):
 
 class TraceNodeData(Contract):
     label: str
-    status: Literal["good", "bad", "neutral"]
+    status: Literal["good", "bad", "neutral", "warn"]  # warn = waiting for the human (STEP_UP)
     trust: Trust | None = None
     ref: str | None = None  # e.g. "email:1842", "finance:read_email"
     detail: str | None = None
@@ -329,7 +329,7 @@ class TraceNode(Contract):
 
 
 class TraceEdgeData(Contract):
-    status: Literal["good", "bad", "neutral"]
+    status: Literal["good", "bad", "neutral", "warn"]  # warn = waiting for the human (STEP_UP)
     field: str | None = None  # critical field carried along this edge, e.g. "payee_account"
     value: str | None = None
 
@@ -343,10 +343,35 @@ class TraceEdge(Contract):
     data: TraceEdgeData
 
 
+class TraceField(Contract):
+    """Where one critical proposal value appeared, e.g. payee_account EVE-777 → ["email:1842 (untrusted)"]."""
+
+    field: Literal["payee_account", "amount_paise"]
+    value: str
+    status: Literal["good", "bad"]  # good = it traces to the trusted source the policy requires
+    sources: list[str]
+
+
 class TraceGraph(Contract):
     decision_id: str
     nodes: list[TraceNode]
     edges: list[TraceEdge]
+    fields: list[TraceField] = Field(default_factory=list)
+
+
+class PaymentEventReport(Contract):
+    """Payment service → gate (POST /internal/payment-event), signed with header
+    X-MandateGate-Signature = hex HMAC(PASS_KEY, canonical(body)). Display only, never decides."""
+
+    status: Literal["paid", "refused"]
+    sent_at: str
+    receipt: "Receipt | None" = None  # when paid
+    error: str | None = None  # when refused: missing_pass | bad_signature | expired | field_mismatch | replay
+    detail: str | None = None
+    pass_id: str | None = None
+    decision_id: str | None = None
+    payee_account: str | None = None
+    amount_paise: Paise | None = None
 
 
 # --------------------------------------------------------------------------- admin & errors

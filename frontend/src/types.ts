@@ -251,7 +251,7 @@ export interface GateEvent {
   data: Record<string, unknown>;
 }
 
-export type TraceStatus = "good" | "bad" | "neutral";
+export type TraceStatus = "good" | "bad" | "neutral" | "warn"; // warn = waiting for the human (STEP_UP)
 
 export interface TraceNodeData {
   label: string;
@@ -283,10 +283,32 @@ export interface TraceEdge {
   data: TraceEdgeData;
 }
 
+/** Where one critical proposal value appeared. */
+export interface TraceField {
+  field: "payee_account" | "amount_paise";
+  value: string;
+  status: "good" | "bad"; // good = traces to the trusted source the policy requires
+  sources: string[]; // e.g. ["email:1842 (untrusted)"]
+}
+
 export interface TraceGraph {
   decision_id: string;
   nodes: TraceNode[];
   edges: TraceEdge[];
+  fields: TraceField[];
+}
+
+/** Payment service → gate (signed). Arrives on the feed as `payment` event data. */
+export interface PaymentEventReport {
+  status: "paid" | "refused";
+  sent_at: string;
+  receipt?: Receipt | null;
+  error?: string | null; // missing_pass | bad_signature | expired | field_mismatch | replay
+  detail?: string | null;
+  pass_id?: string | null;
+  decision_id?: string | null;
+  payee_account?: string | null;
+  amount_paise?: Paise | null;
 }
 
 // --- admin & errors

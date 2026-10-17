@@ -284,6 +284,16 @@ def insert_values(conn: sqlite3.Connection, records: list[ValueRecord]) -> None:
     )
 
 
+def session_tool_calls(conn: sqlite3.Connection, session_id: str, until_ts: str | None = None) -> list[dict[str, Any]]:
+    """Successful tool calls of a session, in order (optionally only those up to a timestamp)."""
+    sql = "SELECT tool_call_id, agent_id, tool, args, ts FROM tool_calls WHERE session_id = ? AND status = 'ok'"
+    params: list[Any] = [session_id]
+    if until_ts is not None:
+        sql += " AND ts <= ?"
+        params.append(until_ts)
+    return [dict(r) for r in conn.execute(sql + " ORDER BY ts, rowid", params).fetchall()]
+
+
 def session_values(conn: sqlite3.Connection, session_id: str) -> list[ValueRecord]:
     rows = conn.execute("SELECT * FROM value_records WHERE session_id = ? ORDER BY rowid", (session_id,)).fetchall()
     return [ValueRecord.model_validate(dict(row)) for row in rows]
@@ -356,6 +366,23 @@ def insert_event(conn: sqlite3.Connection, *, event_id: str, session_id: str | N
         "INSERT INTO events (event_id, session_id, type, data, ts) VALUES (?, ?, ?, ?, ?)",
         (event_id, session_id, type_, _dumps(data), ts),
     )
+
+
+def _event(r: sqlite3.Row) -> Event:
+    return Event(event_id=r["event_id"], seq=r["seq"], type=r["type"], session_id=r["session_id"], ts=r["ts"], data=json.loads(r["data"]))
+
+
+def events_since(conn: sqlite3.Connection, after_seq: int, session_id: str | None = None, limit: int = 500) -> list[Event]:
+    """Events with seq > after_seq, across all sessions (or one), in order: what the SSE stream sends."""
+    if session_id is None:
+        rows = conn.execute("SELECT * FROM events WHERE seq > ? ORDER BY seq LIMIT ?", (after_seq, limit)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?", (session_id, after_seq, limit)).fetchall()
+    return [_event(r) for r in rows]
+
+
+def max_event_seq(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COALESCE(MAX(seq), 0) FROM events").fetchone()[0]
 
 
 def list_events(conn: sqlite3.Connection, session_id: str | None, after_seq: int = 0) -> list[Event]:

@@ -10,16 +10,11 @@ from fastapi.testclient import TestClient
 from app.config import ConfigError, load_settings
 from app.db import GATE_TABLES, PAYMENT_TABLES, table_names
 from app.fixtures import load_fixtures
-from app.models import AttackResults, TraceGraph
+from app.models import AttackResults
 from payment_service.main import app as pay_app
 from tests.conftest import Env
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
-
-RECEIPT = {
-    "receipt_id": "rcp_smoke", "pass_id": "pas_smoke", "decision_id": "dec_smoke", "invoice_id": "INV-1048",
-    "payee_account": "ACME-4410-2291", "amount_paise": 485000, "currency": "INR", "paid_at": "2026-10-17T09:00:05Z",
-}
 
 
 # --------------------------------------------------------------------------- startup & config
@@ -86,12 +81,6 @@ def test_unknown_decision_is_structured_404(gate: TestClient) -> None:
     assert set(r.json()) == {"error", "detail"}
 
 
-def test_trace_stub_is_react_flow_shaped(gate: TestClient) -> None:
-    trace = TraceGraph.model_validate(gate.get("/trace/dec_example").json())
-    node_ids = {n.id for n in trace.nodes}
-    assert all(e.source in node_ids and e.target in node_ids for e in trace.edges)
-
-
 def test_run_scenario_rejects_unsafe_name(gate: TestClient) -> None:
     assert gate.post("/admin/run-scenario", json={"scenario": "hero_attack"}).status_code == 200
     assert gate.post("/admin/run-scenario", json={"scenario": "x && del *"}).status_code == 422
@@ -99,10 +88,6 @@ def test_run_scenario_rejects_unsafe_name(gate: TestClient) -> None:
 
 def test_attack_results_shape(gate: TestClient) -> None:
     AttackResults.model_validate(gate.get("/attacks/results").json())
-
-
-def test_internal_payment_event_accepts_receipt(gate: TestClient) -> None:
-    assert gate.post("/internal/payment-event", json=RECEIPT).status_code == 200
 
 
 def test_ledger_starts_empty(pay: TestClient) -> None:
@@ -133,4 +118,4 @@ def test_no_float_money_in_contracts() -> None:
     """Invariant 8: every *_paise field in models.py is the strict integer Paise type."""
     source = (APP_DIR / "models.py").read_text(encoding="utf-8")
     fields = re.findall(r"^\s+(\w*paise\w*):\s*([^\n=]+)", source, re.MULTILINE)
-    assert fields and all(t.strip() == "Paise" for _, t in fields), fields
+    assert fields and all(t.strip() in ("Paise", "Paise | None") for _, t in fields), fields
